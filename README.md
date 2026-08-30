@@ -74,3 +74,14 @@ http://<gateway-host>:<port>/functions/v1/semgrep
 The left pane shows the newest messages that fit on screen, updating every couple of seconds — new messages appear at the top and old ones fall off. Type into the input at the bottom and press Enter to add a message; it is embedded and stored in the same request.
 
 The right pane is search: type plain text and press Enter. Results are the stored messages ranked by vector distance to your query, closest first, with the distance shown. An empty query shows nothing.
+
+## Redeployment: the app moves out of the edge function
+
+Disposition recorded 2026-08-30. The built page outgrew the Kubernetes CR size limit, so the app leaves the edge-function delivery path. This section records what is settled; implementation follows separately.
+
+- **Objective** — the web app no longer ships as the `semgrep` Function CR and is no longer packaged into `crs/semgrep.yaml`. The `semgrep-api` function and the schema Migration are unaffected.
+- **Image** — one Docker image named `semgrep` (replacing `semgrep-generator`), based on the existing `python:3.12-slim` generator image, running two processes: a static web server for the page and the `semgrep-generator` loop. An entrypoint backgrounds both, waits with `wait -n`, and kills the survivor when either exits — so either process dying kills the container and Kubernetes restarts it (the cockroachdb-omnibox pattern).
+- **Serving duties** — the web server takes over what `functions/semgrep/index.ts` does today: serve the single-file bundle produced by `make ui` and substitute `__SUPABASE_ANON_KEY__` at serve time. It is a static server, not the Vite dev server.
+- **Topology** — the container deploys into the same cluster and gets its own URL: the same hostname as the gateway, on its own public port (e.g. 9001 beside the gateway's 9000). The port is never hardcoded in packaged artifacts; it is configured manually at deployment time, with the steps to be documented here step by step.
+- **CORS: settled** — live probes against the envoy gateway showed preflights answered with 200, the `:9001` origin echoed in `access-control-allow-origin`, and the requested headers allowed, on all three path families the page calls (`/rest/v1`, `/functions/v1`, `/auth/v1`). The page can call the gateway cross-origin directly; no proxy and no CORS code in this repo.
+- **Open items** — the runtime injection mechanism for the API base URL (only `__SUPABASE_ANON_KEY__` has a placeholder today); the web-server implementation choice; where the Deployment manifest lives and the exposure mechanism for the public port; the container's final environment set; cleanup of the retired edge-function path; and a cosmetic `siteUrl` mismatch (signup confirmation emails land on the gateway port, not the app's).
