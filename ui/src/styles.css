@@ -1,0 +1,66 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 14px;
+  background: #111;
+  color: #ddd;
+}
+
+.app {
+  display: flex;
+  height: 100%;
+}
+
+.pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 12px;
+}
+
+.left {
+  border-right: 1px solid #333;
+}
+
+.pane-title {
+  color: #777;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 12px;
+}
+
+.feed {
+  flex: 1;
+  overflow: hidden; /* memory window: what doesn't fit falls off */
+}
+
+.message {
+  padding: 4px 0;
+  border-bottom: 1px solid #222;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.time {
+  color: #777;
+  margin-right: 8px;
+}
+
+.composer {
+  margin-top: 8px;
+  padding: 8px;
+  background: #1a1a1a;
+  color: #ddd;
+  border: 1px solid #333;
+  outline: none;
+  font: inherit;
+}
