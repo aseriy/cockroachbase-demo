@@ -1,14 +1,14 @@
-# Semantic Messages Demo
+# semgrep
 
 A demo application for self-hosted [Supabase](https://supabase.com) running on [CockroachDB](https://www.cockroachlabs.com). Messages typed into a web page are embedded by the `gte-small` model running inside the platform's edge runtime, stored in a native `VECTOR(384)` column, and searched by vector distance directly in the database.
 
-No external AI service is involved: the embedding model runs in the edge runtime, the vectors live in CockroachDB, and the platform serves its own UI. The entire application deploys as three Kubernetes manifests.
+No external AI service is involved: the embedding model runs in the edge runtime, the vectors live in CockroachDB, and the platform serves its own UI. The entire application deploys as one manifest file.
 
 ## How it works
 
-- **UI function** — an edge function serves the web page. The page comes from the same origin as every API it calls, so there is no CORS configuration anywhere.
-- **Semantic function** — receives a message over POST, embeds it with `Supabase.ai.Session('gte-small')`, and inserts the row with text and vector together. Search takes plain query text, embeds it the same way, and returns rows ranked by cosine distance.
-- **Schema** — one `messages` table with a `VECTOR(384)` column, owned by `postgres`, readable by the API roles over REST.
+- **`semgrep`** — an edge function that serves the web page. The page comes from the same origin as every API it calls, so there is no CORS configuration anywhere.
+- **`semgrep-api`** — an edge function with two operations. Add: embed the message with `Supabase.ai.Session('gte-small')` and insert the row with text and vector together. Search: embed the query text the same way and return rows ranked by cosine distance, via the `search_messages` SQL function.
+- **Schema** — one `messages` table with a `VECTOR(384)` column, plus the `search_messages` function, both owned by the platform's conventions and readable/callable by the API roles.
 - **Message generator** (optional) — an external container that POSTs generated messages to the same endpoint the page uses, to keep the feed moving.
 
 The page:
@@ -32,12 +32,12 @@ The page:
 Makefile              build and packaging targets
 ui/                   SOURCE — the web UI (React + Vite)
 functions/
-  semantic/index.ts   SOURCE — the message/search function
-  demo-ui/index.ts    SOURCE — two-line stub serving the built page
+  semgrep/index.ts    SOURCE — two-line stub serving the built page
+  semgrep-api/index.ts SOURCE — the add/search function
 schema/
-  demo-schema.sql     SOURCE — table, ownership, grants
-build/                GENERATED — the UI bundle and page module (gitignored)
-crs/                  GENERATED — the deployment manifests
+  schema.sql          SOURCE — table, search function, grants
+build/                GENERATED — bundle, page module, manifest parts (gitignored)
+crs/                  GENERATED — the single deployable manifest (gitignored)
 ```
 
 The rule throughout: source lives in real files (`.ts`, `.tsx`, `.sql`). Bundles and manifests are build products — never hand-edited.
@@ -51,8 +51,8 @@ The rule throughout: source lives in real files (`.ts`, `.tsx`, `.sql`). Bundles
 ## Build
 
 ```
-make ui      # Vite build: ui/ → build/ui/index.html → build/demo-ui/page.ts
-make crs     # package sources and build output into crs/*.yaml
+make ui      # Vite build: ui/ → build/ui/index.html → build/semgrep/page.ts
+make crs     # package everything into the single crs/semgrep.yaml
 make all     # both
 make clean   # remove build/ and crs/
 ```
@@ -60,15 +60,13 @@ make clean   # remove build/ and crs/
 ## Deploy
 
 ```
-kubectl apply -f crs/supabase-demo-schema-migration.yaml
-kubectl apply -f crs/supabase-semantic-function.yaml
-kubectl apply -f crs/supabase-demo-ui-function.yaml
+kubectl apply -f crs/semgrep.yaml
 ```
 
-The functions pod restarts on its own to pick up the new functions. Then open:
+One file, three resources: the schema Migration and the two Functions. The functions pod restarts on its own to pick them up. Then open:
 
 ```
-http://<gateway-host>:<port>/functions/v1/demo-ui
+http://<gateway-host>:<port>/functions/v1/semgrep
 ```
 
 ## Usage

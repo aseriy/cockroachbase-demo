@@ -39,7 +39,9 @@ body {
 
 .feed {
   flex: 1;
-  overflow: hidden; /* memory window: what doesn't fit falls off */
+  overflow: hidden; /* memory window: what doesn't fit falls off the top */
+  display: flex;
+  flex-direction: column-reverse; /* data is newest-first; render newest at the bottom */
 }
 
 .message {
@@ -63,4 +65,22 @@ body {
   border: 1px solid #333;
   outline: none;
   font: inherit;
+  resize: none;
+}
+
+.results {
+  flex: 1;
+  overflow-y: auto; /* scrollable; the bar appears per browser behavior */
+  margin-top: 8px;
+}
+
+.result {
+  padding: 4px 0;
+  border-bottom: 1px solid #222;
+  /* full message text, wrapped — the feed row truncates, results never do */
+}
+
+.distance {
+  color: #777;
+  margin-right: 8px;
 }

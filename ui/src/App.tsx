@@ -1,4 +1,5 @@
 import Feed from './Feed'
+import Search from './Search'
 
 export default function App() {
   return (
@@ -9,7 +10,7 @@ export default function App() {
       </div>
       <div className="pane right">
         <div className="pane-title">search</div>
-        {/* search arrives in a later phase; the pane stays empty */}
+        <Search />
       </div>
     </div>
   )

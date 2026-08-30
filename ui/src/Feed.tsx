@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react'
 // anon key at request time; URLs are relative because the page shares its
 // origin with the APIs. `npm run dev` falls back to the VITE_ variables.
 const INJECTED_KEY = '__SUPABASE_ANON_KEY__'
-const BASE = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? ''
+export const API_BASE = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? ''
 const ANON = INJECTED_KEY.startsWith('__')
   ? ((import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '')
   : INJECTED_KEY
 
-const HEADERS = { apikey: ANON, Authorization: `Bearer ${ANON}` }
+export const HEADERS = { apikey: ANON, Authorization: `Bearer ${ANON}` }
 
 type Message = { id: string; body: string; created_at: string }
 
@@ -19,7 +19,7 @@ export default function Feed() {
 
   async function load() {
     const res = await fetch(
-      `${BASE}/rest/v1/messages?select=id,body,created_at&order=created_at.desc&limit=50`,
+      `${API_BASE}/rest/v1/messages?select=id,body,created_at&order=created_at.desc&limit=50`,
       { headers: HEADERS },
     )
     if (res.ok) setMessages(await res.json())
@@ -35,7 +35,7 @@ export default function Feed() {
     const text = draft.trim()
     if (!text) return
     setDraft('')
-    await fetch(`${BASE}/functions/v1/semantic`, {
+    await fetch(`${API_BASE}/functions/v1/semgrep-api`, {
       method: 'POST',
       headers: { ...HEADERS, 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
@@ -53,13 +53,17 @@ export default function Feed() {
           </div>
         ))}
       </div>
-      <input
+      <textarea
         className="composer"
+        rows={4}
         placeholder="type a message…"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') send()
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault()
+            send()
+          }
         }}
       />
     </>
