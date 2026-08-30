@@ -27,25 +27,25 @@ $(PAGE_MOD): $(UI_BUNDLE)
 	mkdir -p $(dir $@)
 	{ printf 'export default '; jq -Rs . < $<; printf ';\n'; } > $@
 
-build/manifests/schema.json: schema/schema.sql
+build/manifests/schema.json: schema/schema.sql Makefile
 	mkdir -p $(dir $@)
 	jq -n --rawfile sql $< \
 	  '{apiVersion:"core.supabase.io/v1alpha1",kind:"Migration",metadata:{name:"supabase-semgrep-schema",namespace:"default"},spec:{databaseRef:{kind:"CockroachDB",name:"supabase"},migrations:[{name:"schema",sql:$$sql}]}}' > $@
 
-build/manifests/semgrep-api.json: functions/semgrep-api/index.ts
+build/manifests/semgrep-api.json: functions/semgrep-api/index.ts Makefile
 	mkdir -p $(dir $@)
 	jq -n --rawfile src $< \
 	  '{apiVersion:"core.supabase.io/v1alpha1",kind:"Function",metadata:{name:"supabase-semgrep-api-function",namespace:"default"},spec:{projectRef:"supabase",functionName:"semgrep-api",verifyJwt:false,source:{"index.ts":$$src}}}' > $@
 
-build/manifests/semgrep.json: functions/semgrep/index.ts $(PAGE_MOD)
+build/manifests/semgrep.json: functions/semgrep/index.ts $(PAGE_MOD) Makefile
 	mkdir -p $(dir $@)
 	jq -n --rawfile stub functions/semgrep/index.ts --rawfile page $(PAGE_MOD) \
 	  '{apiVersion:"core.supabase.io/v1alpha1",kind:"Function",metadata:{name:"supabase-semgrep-function",namespace:"default"},spec:{projectRef:"supabase",functionName:"semgrep",verifyJwt:false,source:{"index.ts":$$stub,"page.ts":$$page}}}' > $@
 
-build/manifests/generator.json:
+build/manifests/generator.json: Makefile
 	mkdir -p $(dir $@)
 	jq -n \
-	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep-generator",namespace:"default"},spec:{replicas:0,selector:{matchLabels:{app:"semgrep-generator"}},template:{metadata:{labels:{app:"semgrep-generator"}},spec:{containers:[{name:"generator",image:"localhost:5000/semgrep-generator:latest",imagePullPolicy:"Always",env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_ANON_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"anon-key"}}}]}]}}}}' > $@
+	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep-generator",namespace:"default"},spec:{replicas:0,selector:{matchLabels:{app:"semgrep-generator"}},template:{metadata:{labels:{app:"semgrep-generator"}},spec:{containers:[{name:"generator",image:"localhost:5000/semgrep-generator:latest",imagePullPolicy:"Always",env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_SERVICE_ROLE_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"service-key"}}}]}]}}}}' > $@
 
 IMG ?= semgrep-generator:latest
 

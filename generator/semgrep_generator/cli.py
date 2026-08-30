@@ -27,10 +27,14 @@ def _generate(name: str) -> Optional[str]:
     return getattr(module, name)()
 
 
-def _post_message(url: str, anon_key: str, text: str) -> None:
+def _post_message(url: str, service_key: str, text: str) -> None:
     response = requests.post(
         f"{url}/functions/v1/semgrep-api",
-        headers={"apikey": anon_key, "Content-Type": "application/json"},
+        headers={
+            "apikey": service_key,
+            "Authorization": f"Bearer {service_key}",
+            "Content-Type": "application/json",
+        },
         json={"text": text},
         timeout=30,
     )
@@ -42,7 +46,7 @@ def cli() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
     url = os.environ["SEMGREP_URL"].rstrip("/")
-    anon_key = os.environ["SUPABASE_ANON_KEY"]
+    service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
     sources = _source_names()
     logger.info(f"sources: {', '.join(sources)}")
@@ -53,7 +57,7 @@ def cli() -> None:
         try:
             text = _generate(name)
             if text:
-                _post_message(url, anon_key, text)
+                _post_message(url, service_key, text)
                 logger.info(f"{name}: {text}")
             else:
                 logger.warning(f"{name}: produced no message; skipped")

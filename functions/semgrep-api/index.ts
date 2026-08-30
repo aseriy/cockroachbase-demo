@@ -16,6 +16,29 @@ const pool = new Pool(
 
 const session = new Supabase.ai.Session('gte-small')
 
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
+const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+type Caller = { kind: 'service' } | { kind: 'user'; id: string; name: string } | null
+
+async function identify(req: Request): Promise<Caller> {
+  const auth = req.headers.get('Authorization') ?? ''
+  if (!auth.startsWith('Bearer ')) return null
+  const token = auth.slice('Bearer '.length)
+
+  if (token === SERVICE_KEY) return { kind: 'service' }
+
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return null
+  const user = await res.json()
+  if (!user?.id) return null
+  const name = user.user_metadata?.display_name ?? 'unknown'
+  return { kind: 'user', id: user.id, name }
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -38,18 +61,37 @@ Deno.serve(async (req) => {
   try {
     ;({ op, text } = await req.json())
   } catch {
-    text = undefined
+    op = undefined
   }
-  if (typeof text !== 'string' || !text.trim()) {
-    return json({ error: 'text required' }, 400)
-  }
-  const input = text.trim()
-
-  const vector = await embed(input)
 
   const conn = await pool.connect()
   try {
+    if (op === 'stats') {
+      const result = await conn.queryObject`
+        select
+          (select count(*) from messages) as messages,
+          (select count(distinct user_id) from auth.sessions
+             where not_after is null or not_after > now()) as online
+      `
+      const row = result.rows[0] as Record<string, unknown>
+      return json({ messages: Number(row.messages), online: Number(row.online) })
+    }
+
+    const caller = await identify(req)
+    if (!caller) {
+      return json({ error: 'sign in required' }, 401)
+    }
+
+    if (typeof text !== 'string' || !text.trim()) {
+      return json({ error: 'text required' }, 400)
+    }
+    const input = text.trim()
+    const vector = await embed(input)
+
     if (op === 'search') {
+      if (caller.kind !== 'user') {
+        return json({ error: 'sign in required' }, 401)
+      }
       const result = await conn.queryObject`
         select * from search_messages(${vector}::vector)
       `
@@ -61,6 +103,16 @@ Deno.serve(async (req) => {
       return json(rows)
     }
 
+    if (caller.kind === 'user') {
+      const result = await conn.queryObject`
+        insert into messages (body, body_vector, user_id, author)
+        values (${input}, ${vector}::vector, ${caller.id}, ${caller.name})
+        returning id, body, author, created_at
+      `
+      return json(result.rows[0])
+    }
+
+    // service caller: the generator — no attribution
     const result = await conn.queryObject`
       insert into messages (body, body_vector)
       values (${input}, ${vector}::vector)

@@ -12,9 +12,43 @@ body {
   color: #ddd;
 }
 
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 8px 12px;
+  border-bottom: 1px solid #333;
+}
+
+.who {
+  color: #ddd;
+  margin-right: 12px;
+}
+
+.counts {
+  color: #777;
+}
+
+.linkish {
+  background: none;
+  border: none;
+  color: #777;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}
+
 .app {
   display: flex;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
 }
 
 .pane {
@@ -47,14 +81,21 @@ body {
 .message {
   padding: 4px 0;
   border-bottom: 1px solid #222;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* two columns like the search results: meta | message */
+  display: flex;
+  gap: 8px;
 }
 
-.time {
+.meta {
   color: #777;
-  margin-right: 8px;
+  flex: 0 0 7em;
+  display: flex;
+  flex-direction: column;
+}
+
+.message .body {
+  flex: 1;
+  min-width: 0; /* full message text, wrapped */
 }
 
 .composer {
@@ -82,12 +123,42 @@ body {
   gap: 8px;
 }
 
-.distance {
-  color: #777;
-  flex: 0 0 3.5em;
-}
-
 .result .body {
   flex: 1;
-  min-width: 0; /* full message text, wrapped — the feed row truncates, results never do */
+  min-width: 0; /* full message text, wrapped */
+}
+
+.auth {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field {
+  padding: 8px;
+  background: #1a1a1a;
+  color: #ddd;
+  border: 1px solid #333;
+  outline: none;
+  font: inherit;
+}
+
+.auth-actions {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.button {
+  padding: 6px 16px;
+  background: #1a1a1a;
+  color: #ddd;
+  border: 1px solid #555;
+  font: inherit;
+  cursor: pointer;
+}
+
+.notice {
+  color: #c9a227;
 }
