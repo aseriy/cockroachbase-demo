@@ -77,10 +77,17 @@ body {
 .result {
   padding: 4px 0;
   border-bottom: 1px solid #222;
-  /* full message text, wrapped — the feed row truncates, results never do */
+  /* two columns: distance | message — wrapped lines stay under the message */
+  display: flex;
+  gap: 8px;
 }
 
 .distance {
   color: #777;
-  margin-right: 8px;
+  flex: 0 0 3.5em;
+}
+
+.result .body {
+  flex: 1;
+  min-width: 0; /* full message text, wrapped — the feed row truncates, results never do */
 }

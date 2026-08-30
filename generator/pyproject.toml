@@ -1,0 +1,20 @@
+[project]
+name = "semgrep-generator"
+version = "0.1.0"
+description = "Feeds generated messages to the semgrep demo board"
+requires-python = ">=3.12.3"
+dependencies = [
+    "click==8.1.7",
+    "requests==2.32.3",
+    "yfinance==0.2.43",
+]
+
+[tool.poetry]
+packages = [{ include = "semgrep_generator" }]
+
+[tool.poetry.scripts]
+semgrep-generator = "semgrep_generator.cli:cli"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"

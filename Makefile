@@ -8,9 +8,10 @@ DEPLOYABLE := crs/semgrep.yaml
 
 MANIFESTS := build/manifests/schema.json \
              build/manifests/semgrep-api.json \
-             build/manifests/semgrep.json
+             build/manifests/semgrep.json \
+             build/manifests/generator.json
 
-.PHONY: all ui crs clean
+.PHONY: all ui crs generator-image clean
 
 all: crs
 
@@ -41,11 +42,22 @@ build/manifests/semgrep.json: functions/semgrep/index.ts $(PAGE_MOD)
 	jq -n --rawfile stub functions/semgrep/index.ts --rawfile page $(PAGE_MOD) \
 	  '{apiVersion:"core.supabase.io/v1alpha1",kind:"Function",metadata:{name:"supabase-semgrep-function",namespace:"default"},spec:{projectRef:"supabase",functionName:"semgrep",verifyJwt:false,source:{"index.ts":$$stub,"page.ts":$$page}}}' > $@
 
+build/manifests/generator.json:
+	mkdir -p $(dir $@)
+	jq -n \
+	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep-generator",namespace:"default"},spec:{replicas:0,selector:{matchLabels:{app:"semgrep-generator"}},template:{metadata:{labels:{app:"semgrep-generator"}},spec:{containers:[{name:"generator",image:"localhost:5000/semgrep-generator:latest",imagePullPolicy:"Always",env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_ANON_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"anon-key"}}}]}]}}}}' > $@
+
+IMG ?= semgrep-generator:latest
+
+generator-image:
+	docker build -t $(IMG) generator
+
 $(DEPLOYABLE): $(MANIFESTS)
 	mkdir -p crs
 	{ cat build/manifests/schema.json; \
 	  printf -- '---\n'; cat build/manifests/semgrep-api.json; \
-	  printf -- '---\n'; cat build/manifests/semgrep.json; } > $@
+	  printf -- '---\n'; cat build/manifests/semgrep.json; \
+	  printf -- '---\n'; cat build/manifests/generator.json; } > $@
 	@sz=$$(stat -c%s $@); \
 	if [ $$sz -gt $(SIZE_LIMIT) ]; then rm -f $@; echo "error: $@ is $$sz bytes, over $(SIZE_LIMIT)" >&2; exit 1; fi; \
 	echo "packaged $@ ($$sz bytes)"
