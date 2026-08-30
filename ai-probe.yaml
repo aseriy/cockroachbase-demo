@@ -1,0 +1,23 @@
+apiVersion: core.supabase.io/v1alpha1
+kind: Function
+metadata:
+  name: supabase-ai-probe-function
+spec:
+  projectRef: supabase
+  functionName: ai-probe
+  verifyJwt: false
+  source:
+    index.ts: |
+      const session = new Supabase.ai.Session('gte-small');
+      Deno.serve(async () => {
+        const t0 = Date.now();
+        const v = await session.run('the quick brown fox', {
+          mean_pool: true,
+          normalize: true,
+        });
+        const arr = Array.from(v as Float32Array);
+        return new Response(
+          JSON.stringify({ ms: Date.now() - t0, len: arr.length, head: arr.slice(0, 3) }),
+          { headers: { 'Content-Type': 'application/json' } },
+        );
+      });
