@@ -52,11 +52,10 @@ The rule throughout: source lives in real files (`.ts`, `.tsx`, `.sql`). Bundles
 ## Build
 
 ```
-make ui          # Vite build: ui/ → build/ui/index.html
 make crs         # package the schema and semgrep-api into crs/semgrep.yaml
-make image       # build the semgrep container image (stages the page into generator/)
+make image       # build the semgrep container image (Vite build + stage into generator/)
 make deployment  # generate the Deployment manifest (needs SEMGREP_PORT and SEMGREP_EXTERNAL_URL)
-make all         # same as make crs
+make all         # manifest and image
 make clean       # remove build/, crs/ and the staged page
 ```
 
@@ -120,11 +119,11 @@ The right pane is search: type plain text and press Enter. Results are the store
 
 ## Redeployment: the app moves out of the edge function
 
-Disposition recorded 2026-08-30, decisions completed 2026-08-31. This section documents where the application is going and why; the implementation, and the step-by-step deployment instructions that come with it, follow separately.
+Disposition recorded 2026-08-30, decisions completed 2026-08-31, implemented the same day. This section records why the application moved and the decisions behind it; the deployment steps live in the Deploy section above.
 
 ### Why the app is moving
 
-Today the web page reaches the cluster embedded inside a Kubernetes resource: `make crs` takes the Vite-built page, wraps it JSON-escaped into the `semgrep` Function CR, and packages that into `crs/semgrep.yaml`. The built page has outgrown the Kubernetes CR size limit, so this delivery path no longer works — the manifest cannot be applied once the embedded page pushes it over the limit.
+The web page used to reach the cluster embedded inside a Kubernetes resource: `make crs` took the Vite-built page, wrapped it JSON-escaped into the `semgrep` Function CR, and packaged that into `crs/semgrep.yaml`. The built page outgrew the Kubernetes CR size limit, so that delivery path stopped working — the manifest could not be applied once the embedded page pushed it over the limit.
 
 Only the page delivery changes. The `semgrep-api` edge function and the schema Migration are unaffected: they remain in `crs/semgrep.yaml` and deploy exactly as before.
 

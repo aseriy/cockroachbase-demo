@@ -1,5 +1,3 @@
-SIZE_LIMIT := 972800
-
 UI_SOURCES := $(wildcard ui/src/*) ui/index.html ui/vite.config.ts ui/package.json
 UI_BUNDLE  := build/ui/index.html
 
@@ -8,15 +6,11 @@ DEPLOYABLE := crs/semgrep.yaml
 MANIFESTS := build/manifests/schema.json \
              build/manifests/semgrep-api.json
 
-.PHONY: all ui crs image deployment clean
+.PHONY: all crs image deployment clean
 
-all: crs
-
-ui: $(UI_BUNDLE)
+all: crs image
 
 crs: $(DEPLOYABLE)
-
-deployment: build/manifests/semgrep.json
 
 $(UI_BUNDLE): $(UI_SOURCES)
 	npm --prefix ui install
@@ -32,10 +26,12 @@ build/manifests/semgrep-api.json: functions/semgrep-api/index.ts Makefile
 	jq -n --rawfile src $< \
 	  '{apiVersion:"core.supabase.io/v1alpha1",kind:"Function",metadata:{name:"supabase-semgrep-api-function",namespace:"default"},spec:{projectRef:"supabase",functionName:"semgrep-api",verifyJwt:false,source:{"index.ts":$$src}}}' > $@
 
-build/manifests/semgrep.json: Makefile
-	mkdir -p $(dir $@)
+deployment:
+	@if [ -z "$(SEMGREP_PORT)" ] || [ -z "$(SEMGREP_EXTERNAL_URL)" ]; then \
+	  echo "error: SEMGREP_PORT and SEMGREP_EXTERNAL_URL must be set" >&2; exit 1; fi
+	mkdir -p build/manifests
 	jq -n --arg port "$(SEMGREP_PORT)" --arg url "$(SEMGREP_EXTERNAL_URL)" \
-	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep",namespace:"default"},spec:{replicas:1,selector:{matchLabels:{app:"semgrep"}},template:{metadata:{labels:{app:"semgrep"}},spec:{containers:[{name:"semgrep",image:"localhost:5000/semgrep:latest",imagePullPolicy:"Always",ports:[{containerPort:8080,hostPort:($$port|tonumber)}],env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_SERVICE_ROLE_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"service-key"}}},{name:"SUPABASE_ANON_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"anon-key"}}},{name:"SEMGREP_EXTERNAL_URL",value:$$url}]}]}}}}' > $@
+	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep",namespace:"default"},spec:{replicas:1,selector:{matchLabels:{app:"semgrep"}},template:{metadata:{labels:{app:"semgrep"}},spec:{containers:[{name:"semgrep",image:"localhost:5000/semgrep:latest",imagePullPolicy:"Always",ports:[{containerPort:8080,hostPort:($$port|tonumber)}],env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_SERVICE_ROLE_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"service-key"}}},{name:"SUPABASE_ANON_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"anon-key"}}},{name:"SEMGREP_EXTERNAL_URL",value:$$url}]}]}}}}' > build/manifests/semgrep.json
 
 IMG ?= semgrep:latest
 
@@ -47,9 +43,6 @@ $(DEPLOYABLE): $(MANIFESTS)
 	mkdir -p crs
 	{ cat build/manifests/schema.json; \
 	  printf -- '---\n'; cat build/manifests/semgrep-api.json; } > $@
-	@sz=$$(stat -c%s $@); \
-	if [ $$sz -gt $(SIZE_LIMIT) ]; then rm -f $@; echo "error: $@ is $$sz bytes, over $(SIZE_LIMIT)" >&2; exit 1; fi; \
-	echo "packaged $@ ($$sz bytes)"
 
 clean:
 	rm -rf build crs ui/node_modules generator/index.html
