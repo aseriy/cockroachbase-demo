@@ -4,9 +4,10 @@ UI_BUNDLE  := build/ui/index.html
 DEPLOYABLE := crs/semgrep.yaml
 
 MANIFESTS := build/manifests/schema.json \
-             build/manifests/semgrep-api.json
+             build/manifests/semgrep-api.json \
+             build/manifests/semgrep.json
 
-.PHONY: all crs image deployment clean
+.PHONY: all crs image clean
 
 all: crs image
 
@@ -26,12 +27,10 @@ build/manifests/semgrep-api.json: functions/semgrep-api/index.ts Makefile
 	jq -n --rawfile src $< \
 	  '{apiVersion:"core.supabase.io/v1alpha1",kind:"Function",metadata:{name:"supabase-semgrep-api-function",namespace:"default"},spec:{projectRef:"supabase",functionName:"semgrep-api",verifyJwt:false,source:{"index.ts":$$src}}}' > $@
 
-deployment:
-	@if [ -z "$(SEMGREP_PORT)" ] || [ -z "$(SEMGREP_EXTERNAL_URL)" ]; then \
-	  echo "error: SEMGREP_PORT and SEMGREP_EXTERNAL_URL must be set" >&2; exit 1; fi
-	mkdir -p build/manifests
-	jq -n --arg port "$(SEMGREP_PORT)" --arg url "$(SEMGREP_EXTERNAL_URL)" \
-	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep",namespace:"default"},spec:{replicas:1,selector:{matchLabels:{app:"semgrep"}},template:{metadata:{labels:{app:"semgrep"}},spec:{containers:[{name:"semgrep",image:"localhost:5000/semgrep:latest",imagePullPolicy:"Always",ports:[{containerPort:8080,hostPort:($$port|tonumber)}],env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_SERVICE_ROLE_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"service-key"}}},{name:"SUPABASE_ANON_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"anon-key"}}},{name:"SEMGREP_EXTERNAL_URL",value:$$url}]}]}}}}' > build/manifests/semgrep.json
+build/manifests/semgrep.json: Makefile
+	mkdir -p $(dir $@)
+	jq -n \
+	  '{apiVersion:"apps/v1",kind:"Deployment",metadata:{name:"semgrep",namespace:"default"},spec:{replicas:0,selector:{matchLabels:{app:"semgrep"}},template:{metadata:{labels:{app:"semgrep"}},spec:{containers:[{name:"semgrep",image:"localhost:5000/semgrep:latest",imagePullPolicy:"Always",ports:[{containerPort:8080}],env:[{name:"SEMGREP_URL",value:"http://supabase-envoy:8000"},{name:"SUPABASE_SERVICE_ROLE_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"service-key"}}},{name:"SUPABASE_ANON_KEY",valueFrom:{secretKeyRef:{name:"supabase-jwt",key:"anon-key"}}}]}]}}}}' > $@
 
 IMG ?= semgrep:latest
 
@@ -42,7 +41,8 @@ image: $(UI_BUNDLE)
 $(DEPLOYABLE): $(MANIFESTS)
 	mkdir -p crs
 	{ cat build/manifests/schema.json; \
-	  printf -- '---\n'; cat build/manifests/semgrep-api.json; } > $@
+	  printf -- '---\n'; cat build/manifests/semgrep-api.json; \
+	  printf -- '---\n'; cat build/manifests/semgrep.json; } > $@
 
 clean:
 	rm -rf build crs ui/node_modules generator/index.html

@@ -52,64 +52,63 @@ The rule throughout: source lives in real files (`.ts`, `.tsx`, `.sql`). Bundles
 ## Build
 
 ```
-make crs         # package the schema and semgrep-api into crs/semgrep.yaml
+make crs         # package the schema, semgrep-api and the semgrep Deployment into crs/semgrep.yaml
 make image       # build the semgrep container image (Vite build + stage into generator/)
-make deployment  # generate the Deployment manifest (needs SEMGREP_PORT and SEMGREP_EXTERNAL_URL)
 make all         # manifest and image
 make clean       # remove build/, crs/ and the staged page
 ```
 
 ## Deploy
 
-One step at a time; every value that names your environment enters on the command line, never from a file in this repository.
+One step at a time; every value that names your environment is configured on the cluster at deployment time, never from a file in this repository.
 
-**1. Apply the manifest** — two resources: the schema Migration and the `semgrep-api` Function. The functions pod restarts on its own to pick them up.
+**1. Apply the manifest** — one file, three resources: the schema Migration, the `semgrep-api` Function, and the `semgrep` Deployment. The functions pod restarts on its own to pick up the Function; the Deployment ships at 0 replicas, so nothing runs yet.
 
 ```
 kubectl apply -f crs/semgrep.yaml
 ```
 
-**2. Build the image:**
+**2. Build the image**, tagged for the registry the cluster pulls from (the working example is the in-cluster registry at `localhost:5000`):
 
 ```
-make image
+make image IMG=localhost:5000/semgrep:latest
 ```
 
-**3. Tag it for the registry the cluster pulls from** (the working example is the in-cluster registry at `localhost:5000`):
-
-```
-docker tag semgrep:latest localhost:5000/semgrep:latest
-```
-
-**4. Push it:**
+**3. Push it:**
 
 ```
 docker push localhost:5000/semgrep:latest
 ```
 
-**5. Generate the Deployment manifest.** Pick the public port for the app and pass the browser-reachable gateway URL — these two values exist only on your command line:
+**4. Set the browser-reachable gateway URL** on the Deployment:
 
 ```
-make deployment SEMGREP_PORT=9001 SEMGREP_EXTERNAL_URL=http://<hostname>:9000
+kubectl set env deployment/semgrep SEMGREP_EXTERNAL_URL=http://<hostname>:9000
 ```
 
-**6. Apply it:**
+**5. Set the public port** (your choice — the working example is 9001, beside the gateway's 9000):
 
 ```
-kubectl apply -f build/manifests/semgrep.json
+kubectl patch deployment semgrep -p '{"spec":{"template":{"spec":{"containers":[{"name":"semgrep","ports":[{"containerPort":8080,"hostPort":9001}]}]}}}}'
+```
+
+**6. Bring it up:**
+
+```
+kubectl scale deployment semgrep --replicas=1
 ```
 
 **7. Open the chosen port for public traffic.** On EC2: an inbound rule for TCP 9001 in the instance's security group.
 
 **8. Open the app** at `http://<hostname>:9001/`.
 
-**9. If upgrading from the edge-function delivery**, remove the retired pieces: the old page Function from the cluster —
+**9. If upgrading from the edge-function delivery**, remove the old page Function from the cluster:
 
 ```
 kubectl delete function supabase-semgrep-function -n default --ignore-not-found
 ```
 
-**10. Point the platform's `siteUrl` at the app** on the next project helm upgrade (`--set auth.siteUrl=http://<hostname>:9001`), so signup-confirmation emails land on the app instead of the gateway port.
+**10. Point the platform's `siteUrl` at the app** on the next project helm upgrade (`--set auth.siteUrl=http://<hostname>:9001`, carrying the release's existing values), so signup-confirmation emails land on the app instead of the gateway port.
 
 ## Usage
 
@@ -155,13 +154,13 @@ The environment variables reach the container exactly the way the generator's do
 | `SEMGREP_URL` | generator loop | literal — in-cluster gateway URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | generator loop | secret `supabase-jwt`, key `service-key` |
 | anon key | page (via substitution) | secret `supabase-jwt`, key `anon-key` |
-| external gateway URL | page (via substitution) | literal — browser-reachable URL, set at deployment |
+| external gateway URL | page (via substitution) | set on the cluster with kubectl at deployment time |
 
 ### Where it runs
 
-The container deploys into the same Kubernetes cluster as the platform and gets its own URL: the same hostname as the gateway, on its own public port. The working example is port 9001, beside the gateway's 9000. The port appears nowhere in this repository's packaged artifacts — it is chosen at deployment time, passed to `make deployment` on the command line; the steps are documented in the Deploy section above.
+The container deploys into the same Kubernetes cluster as the platform and gets its own URL: the same hostname as the gateway, on its own public port. The working example is port 9001, beside the gateway's 9000. The port appears nowhere in this repository's artifacts — it is chosen at deployment time and configured on the cluster with kubectl; the steps are documented in the Deploy section above.
 
-With the app out of the packaging, `crs/semgrep.yaml` shrinks to two resources — the schema Migration and the `semgrep-api` Function — and the generator's Deployment manifest leaves the packaging along with the app, since the generator now lives in the app's container.
+The packaging keeps its original single-deployable shape: `crs/semgrep.yaml` carries three resources — the schema Migration, the `semgrep-api` Function, and the `semgrep` Deployment. The Deployment ships at 0 replicas; it is configured (URL, port) and scaled up on the cluster at deployment time.
 
 ### Cross-origin calls and HTTPS
 
