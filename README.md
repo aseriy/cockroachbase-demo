@@ -10,20 +10,7 @@ No external AI service is involved: the embedding model runs in the edge runtime
 - **`semgrep-api`** — an edge function with two operations. Add: embed the message with `Supabase.ai.Session('gte-small')` and insert the row with text and vector together. Search: embed the query text the same way and return rows ranked by cosine distance, via the `search_messages` SQL function.
 - **Schema** — one `messages` table with a `VECTOR(384)` column, plus the `search_messages` function, both owned by the platform's conventions and readable/callable by the API roles.
 
-The page:
 
-```
-┌──────────────────────────────┬───────────────────────────────┐
-│  messages (live feed)        │  search                       │
-│                              │  [ query………………… ]  ⏎          │
-│  newest message              │                               │
-│  older message               │  0.213  closest match         │
-│  older message               │  0.487  next match            │
-│  (newest on top, polls ~2s)  │  (ranked, distance shown)     │
-├──────────────────────────────┤                               │
-│  > type a message… ⏎         │                               │
-└──────────────────────────────┴───────────────────────────────┘
-```
 
 ## Repository layout
 
