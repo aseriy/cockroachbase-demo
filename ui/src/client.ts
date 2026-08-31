@@ -1,11 +1,14 @@
 import { createClient } from '@supabase/supabase-js'
 
-// When served by the stack, the placeholder below is replaced with the real
-// anon key at request time; URLs are relative because the page shares its
-// origin with the APIs. `npm run dev` falls back to the VITE_ variables.
+// When served by the stack, the placeholders below are replaced with the real
+// anon key and gateway URL at container start. `npm run dev` falls back to
+// the VITE_ variables.
 const INJECTED_KEY = '__SUPABASE_ANON_KEY__'
+const INJECTED_URL = '__SUPABASE_URL__'
 
-export const API_BASE = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? ''
+export const API_BASE = INJECTED_URL.startsWith('__')
+  ? ((import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? '')
+  : INJECTED_URL
 
 export const ANON = INJECTED_KEY.startsWith('__')
   ? ((import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '')

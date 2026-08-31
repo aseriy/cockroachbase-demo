@@ -1,3 +1,4 @@
 build/
 crs/
 ui/node_modules/
+generator/index.html

@@ -2,14 +2,13 @@
 
 A demo application for self-hosted [Supabase](https://supabase.com) running on [CockroachDB](https://www.cockroachlabs.com). Messages typed into a web page are embedded by the `gte-small` model running inside the platform's edge runtime, stored in a native `VECTOR(384)` column, and searched by vector distance directly in the database.
 
-No external AI service is involved: the embedding model runs in the edge runtime, the vectors live in CockroachDB, and the platform serves its own UI. The entire application deploys as one manifest file.
+No external AI service is involved: the embedding model runs in the edge runtime, the vectors live in CockroachDB, and the page ships in the same container as the message generator. The application deploys as one manifest file plus one container image.
 
 ## How it works
 
-- **`semgrep`** — an edge function that serves the web page. The page comes from the same origin as every API it calls, so there is no CORS configuration anywhere.
+- **`semgrep`** — the application container. nginx serves the web page (the anon key and the gateway URL are baked into it at container start), and the message-generator loop runs beside it, POSTing generated messages to the same API the page uses to keep the feed moving. The page calls the platform's APIs cross-origin; the envoy gateway answers the CORS preflights, so there is no CORS configuration in this repository.
 - **`semgrep-api`** — an edge function with two operations. Add: embed the message with `Supabase.ai.Session('gte-small')` and insert the row with text and vector together. Search: embed the query text the same way and return rows ranked by cosine distance, via the `search_messages` SQL function.
 - **Schema** — one `messages` table with a `VECTOR(384)` column, plus the `search_messages` function, both owned by the platform's conventions and readable/callable by the API roles.
-- **Message generator** (optional) — an external container that POSTs generated messages to the same endpoint the page uses, to keep the feed moving.
 
 The page:
 
@@ -32,11 +31,13 @@ The page:
 Makefile              build and packaging targets
 ui/                   SOURCE — the web UI (React + Vite)
 functions/
-  semgrep/index.ts    SOURCE — two-line stub serving the built page
   semgrep-api/index.ts SOURCE — the add/search function
+generator/            SOURCE — the semgrep container: the generator package,
+                      Dockerfile, nginx.conf, entrypoint.sh
+                      (index.html is staged here by `make image`; gitignored)
 schema/
   schema.sql          SOURCE — table, search function, grants
-build/                GENERATED — bundle, page module, manifest parts (gitignored)
+build/                GENERATED — bundle, manifest parts (gitignored)
 crs/                  GENERATED — the single deployable manifest (gitignored)
 ```
 
@@ -45,29 +46,71 @@ The rule throughout: source lives in real files (`.ts`, `.tsx`, `.sql`). Bundles
 ## Prerequisites
 
 - A running Supabase-on-CockroachDB stack managed by the [supabase-kubernetes](https://github.com/supabase-community/supabase-kubernetes) operator, and its gateway URL and anon key.
-- `node`/`npm`, `jq`, `make` on the build machine.
+- `node`/`npm`, `jq`, `make`, `docker` on the build machine, with push access to the registry the cluster pulls images from.
 - `kubectl` access to the cluster.
 
 ## Build
 
 ```
-make ui      # Vite build: ui/ → build/ui/index.html → build/semgrep/page.ts
-make crs     # package everything into the single crs/semgrep.yaml
-make all     # both
-make clean   # remove build/ and crs/
+make ui          # Vite build: ui/ → build/ui/index.html
+make crs         # package the schema and semgrep-api into crs/semgrep.yaml
+make image       # build the semgrep container image (stages the page into generator/)
+make deployment  # generate the Deployment manifest (needs SEMGREP_PORT and SEMGREP_EXTERNAL_URL)
+make all         # same as make crs
+make clean       # remove build/, crs/ and the staged page
 ```
 
 ## Deploy
+
+One step at a time; every value that names your environment enters on the command line, never from a file in this repository.
+
+**1. Apply the manifest** — two resources: the schema Migration and the `semgrep-api` Function. The functions pod restarts on its own to pick them up.
 
 ```
 kubectl apply -f crs/semgrep.yaml
 ```
 
-One file, three resources: the schema Migration and the two Functions. The functions pod restarts on its own to pick them up. Then open:
+**2. Build the image:**
 
 ```
-http://<gateway-host>:<port>/functions/v1/semgrep
+make image
 ```
+
+**3. Tag it for the registry the cluster pulls from** (the working example is the in-cluster registry at `localhost:5000`):
+
+```
+docker tag semgrep:latest localhost:5000/semgrep:latest
+```
+
+**4. Push it:**
+
+```
+docker push localhost:5000/semgrep:latest
+```
+
+**5. Generate the Deployment manifest.** Pick the public port for the app and pass the browser-reachable gateway URL — these two values exist only on your command line:
+
+```
+make deployment SEMGREP_PORT=9001 SEMGREP_EXTERNAL_URL=http://<hostname>:9000
+```
+
+**6. Apply it:**
+
+```
+kubectl apply -f build/manifests/semgrep.json
+```
+
+**7. Open the chosen port for public traffic.** On EC2: an inbound rule for TCP 9001 in the instance's security group.
+
+**8. Open the app** at `http://<hostname>:9001/`.
+
+**9. If upgrading from the edge-function delivery**, remove the retired pieces: the old page Function from the cluster —
+
+```
+kubectl delete function supabase-semgrep-function -n default --ignore-not-found
+```
+
+**10. Point the platform's `siteUrl` at the app** on the next project helm upgrade (`--set auth.siteUrl=http://<hostname>:9001`), so signup-confirmation emails land on the app instead of the gateway port.
 
 ## Usage
 
@@ -117,7 +160,7 @@ The environment variables reach the container exactly the way the generator's do
 
 ### Where it runs
 
-The container deploys into the same Kubernetes cluster as the platform and gets its own URL: the same hostname as the gateway, on its own public port. The working example is port 9001, beside the gateway's 9000. The port appears nowhere in this repository's packaged artifacts — it is chosen and configured manually at deployment time, and the deployment steps will be documented in this README when the implementation lands.
+The container deploys into the same Kubernetes cluster as the platform and gets its own URL: the same hostname as the gateway, on its own public port. The working example is port 9001, beside the gateway's 9000. The port appears nowhere in this repository's packaged artifacts — it is chosen at deployment time, passed to `make deployment` on the command line; the steps are documented in the Deploy section above.
 
 With the app out of the packaging, `crs/semgrep.yaml` shrinks to two resources — the schema Migration and the `semgrep-api` Function — and the generator's Deployment manifest leaves the packaging along with the app, since the generator now lives in the app's container.
 
@@ -129,8 +172,4 @@ One production rule follows from this setup: browsers block plain-HTTP requests 
 
 ### Loose ends that are work, not questions
 
-Three items remain; none needs further discussion:
-
-- Retire the edge-function delivery path in this repository: `functions/semgrep/index.ts` and the Makefile targets that wrap the page into the Function manifest.
-- Delete the deployed `supabase-semgrep-function` Function CR from the cluster.
-- Move the platform's `siteUrl` to the app's URL at the next helm upgrade, so signup-confirmation emails land on the app instead of the gateway port.
+The repository side of this move is implemented: the edge-function delivery path is retired, and the packaging produces the two-resource manifest plus the generated Deployment manifest. Two operational steps remain on the cluster, both covered in the Deploy section above: deleting the deployed `supabase-semgrep-function` Function CR, and moving the platform's `siteUrl` to the app's URL at the next helm upgrade.
