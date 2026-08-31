@@ -77,11 +77,60 @@ The right pane is search: type plain text and press Enter. Results are the store
 
 ## Redeployment: the app moves out of the edge function
 
-Disposition recorded 2026-08-30. The built page outgrew the Kubernetes CR size limit, so the app leaves the edge-function delivery path. This section records what is settled; implementation follows separately.
+Disposition recorded 2026-08-30, decisions completed 2026-08-31. This section documents where the application is going and why; the implementation, and the step-by-step deployment instructions that come with it, follow separately.
 
-- **Objective** — the web app no longer ships as the `semgrep` Function CR and is no longer packaged into `crs/semgrep.yaml`. The `semgrep-api` function and the schema Migration are unaffected.
-- **Image** — one Docker image named `semgrep` (replacing `semgrep-generator`), based on the existing `python:3.12-slim` generator image, running two processes: a static web server for the page and the `semgrep-generator` loop. An entrypoint backgrounds both, waits with `wait -n`, and kills the survivor when either exits — so either process dying kills the container and Kubernetes restarts it (the cockroachdb-omnibox pattern).
-- **Serving duties** — the web server takes over what `functions/semgrep/index.ts` does today: serve the single-file bundle produced by `make ui` and substitute `__SUPABASE_ANON_KEY__` at serve time. It is a static server, not the Vite dev server.
-- **Topology** — the container deploys into the same cluster and gets its own URL: the same hostname as the gateway, on its own public port (e.g. 9001 beside the gateway's 9000). The port is never hardcoded in packaged artifacts; it is configured manually at deployment time, with the steps to be documented here step by step.
-- **CORS: settled** — live probes against the envoy gateway showed preflights answered with 200, the `:9001` origin echoed in `access-control-allow-origin`, and the requested headers allowed, on all three path families the page calls (`/rest/v1`, `/functions/v1`, `/auth/v1`). The page can call the gateway cross-origin directly; no proxy and no CORS code in this repo.
-- **Open items** — the runtime injection mechanism for the API base URL (only `__SUPABASE_ANON_KEY__` has a placeholder today); the web-server implementation choice; where the Deployment manifest lives and the exposure mechanism for the public port; the container's final environment set; cleanup of the retired edge-function path; and a cosmetic `siteUrl` mismatch (signup confirmation emails land on the gateway port, not the app's).
+### Why the app is moving
+
+Today the web page reaches the cluster embedded inside a Kubernetes resource: `make crs` takes the Vite-built page, wraps it JSON-escaped into the `semgrep` Function CR, and packages that into `crs/semgrep.yaml`. The built page has outgrown the Kubernetes CR size limit, so this delivery path no longer works — the manifest cannot be applied once the embedded page pushes it over the limit.
+
+Only the page delivery changes. The `semgrep-api` edge function and the schema Migration are unaffected: they remain in `crs/semgrep.yaml` and deploy exactly as before.
+
+### The new shape
+
+The page moves into a Docker image named `semgrep`, which replaces the current `semgrep-generator` image. It is built on the same `python:3.12-slim` base the generator uses today, with nginx added from the Debian package repository.
+
+Two processes run in the container:
+
+- **nginx**, in the foreground, serving the page.
+- **`semgrep-generator`**, the existing message-generator loop, unchanged.
+
+The container's entrypoint starts both in the background and then waits with `wait -n`. The moment either process exits, the entrypoint kills the other and exits nonzero — the container dies as a whole, and Kubernetes restarts it. This is the same supervision pattern used by the cockroachdb-omnibox entrypoint, where CockroachDB and an embedded workload share one container.
+
+### How the page gets its configuration
+
+The page runs in the browser, and the browser cannot read the container's environment. So the two values the page needs — the platform's anon key, and the external URL of the API gateway — have to be baked into the HTML before it is served. That happens in three stages:
+
+1. **In the source.** `ui/src/client.ts` carries placeholder string literals: the existing `__SUPABASE_ANON_KEY__`, plus a new placeholder for the gateway URL. The Vite build (`make ui`) copies these literals verbatim into the single-file bundle, so the built HTML contains both placeholder strings. The build knows nothing about any real key or URL.
+
+2. **At container start.** The entrypoint replaces both placeholders in the HTML with the values of two environment variables (a one-time `sed`), then starts nginx. The substitution happens once because the environment is fixed for the lifetime of the pod. This replaces the per-request `replaceAll` that the `functions/semgrep/index.ts` edge function performs today.
+
+3. **At serve time.** nginx serves the finished static file. Nothing is computed per request.
+
+The environment variables reach the container exactly the way the generator's do today — set on the Deployment at deployment time. The generator already reads `SEMGREP_URL` (a literal value in the manifest) and `SUPABASE_SERVICE_ROLE_KEY` (a `secretKeyRef` into the platform's `supabase-jwt` secret). The page's two values ride the same mechanism: the anon key comes from the same `supabase-jwt` secret (its `anon-key` entry, beside the `service-key` the generator uses), and the external gateway URL is a literal value chosen at deployment time. The container's complete environment is therefore:
+
+| Variable | Consumer | Source |
+|---|---|---|
+| `SEMGREP_URL` | generator loop | literal — in-cluster gateway URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | generator loop | secret `supabase-jwt`, key `service-key` |
+| anon key | page (via substitution) | secret `supabase-jwt`, key `anon-key` |
+| external gateway URL | page (via substitution) | literal — browser-reachable URL, set at deployment |
+
+### Where it runs
+
+The container deploys into the same Kubernetes cluster as the platform and gets its own URL: the same hostname as the gateway, on its own public port. The working example is port 9001, beside the gateway's 9000. The port appears nowhere in this repository's packaged artifacts — it is chosen and configured manually at deployment time, and the deployment steps will be documented in this README when the implementation lands.
+
+With the app out of the packaging, `crs/semgrep.yaml` shrinks to two resources — the schema Migration and the `semgrep-api` Function — and the generator's Deployment manifest leaves the packaging along with the app, since the generator now lives in the app's container.
+
+### Cross-origin calls and HTTPS
+
+Serving the page from its own port means every API call it makes is cross-origin: the page's origin is `host:9001`, the APIs are at `host:9000`. This was probed live against the envoy gateway before being accepted: for all three path families the page uses — `/rest/v1` (the feed), `/functions/v1` (add, search, stats), and `/auth/v1` (login and signup) — envoy answers CORS preflights with 200, echoes the requesting origin in `access-control-allow-origin`, and allows the requested headers. The page therefore calls the gateway directly; there is no proxy and no CORS configuration anywhere in this repository.
+
+One production rule follows from this setup: browsers block plain-HTTP requests made from an HTTPS page (mixed content). If the page is ever served over HTTPS, the injected gateway URL must switch to HTTPS at the same time. Both are deployment-time values, so this is an operational rule for whoever deploys — not a code change.
+
+### Loose ends that are work, not questions
+
+Three items remain; none needs further discussion:
+
+- Retire the edge-function delivery path in this repository: `functions/semgrep/index.ts` and the Makefile targets that wrap the page into the Function manifest.
+- Delete the deployed `supabase-semgrep-function` Function CR from the cluster.
+- Move the platform's `siteUrl` to the app's URL at the next helm upgrade, so signup-confirmation emails land on the app instead of the gateway port.
