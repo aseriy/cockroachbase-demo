@@ -60,7 +60,7 @@ make clean       # remove build/, crs/ and the staged page
 
 ## Deploy
 
-One step at a time; every value that names your environment is configured on the cluster at deployment time, never from a file in this repository.
+Environment-specific values (hostname, ports, keys) are configured on the cluster at deployment time; none of them live in this repository.
 
 **1. Apply the manifest** — one file, three resources: the schema Migration, the `semgrep-api` Function, and the `semgrep` Deployment. The functions pod restarts on its own to pick up the Function; the Deployment ships at 0 replicas, so nothing runs yet.
 
@@ -68,7 +68,7 @@ One step at a time; every value that names your environment is configured on the
 kubectl apply -f crs/semgrep.yaml
 ```
 
-**2. Build the image**, tagged for the registry the cluster pulls from (the working example is the in-cluster registry at `localhost:5000`):
+**2. Build the image**, tagged for the registry the cluster pulls from (for example, an in-cluster registry at `localhost:5000`):
 
 ```
 make image IMG=localhost:5000/semgrep:latest
@@ -86,7 +86,7 @@ docker push localhost:5000/semgrep:latest
 kubectl set env deployment/semgrep SEMGREP_EXTERNAL_URL=http://<hostname>:9000
 ```
 
-**5. Set the public port** (your choice — the working example is 9001, beside the gateway's 9000):
+**5. Set the public port** (your choice — for example 9001, beside the gateway's 9000):
 
 ```
 kubectl patch deployment semgrep -p '{"spec":{"template":{"spec":{"containers":[{"name":"semgrep","ports":[{"containerPort":8080,"hostPort":9001}]}]}}}}'
@@ -102,13 +102,7 @@ kubectl scale deployment semgrep --replicas=1
 
 **8. Open the app** at `http://<hostname>:9001/`.
 
-**9. If upgrading from the edge-function delivery**, remove the old page Function from the cluster:
-
-```
-kubectl delete function supabase-semgrep-function -n default --ignore-not-found
-```
-
-**10. Point the platform's `siteUrl` at the app** on the next project helm upgrade (`--set auth.siteUrl=http://<hostname>:9001`, carrying the release's existing values), so signup-confirmation emails land on the app instead of the gateway port.
+**9. Point the platform's `siteUrl` at the app** on the next project helm upgrade (`--set auth.siteUrl=http://<hostname>:9001`, per your platform's upgrade procedure), so signup-confirmation emails land on the app instead of the gateway port.
 
 ## Usage
 
@@ -116,58 +110,40 @@ The left pane shows the newest messages that fit on screen, updating every coupl
 
 The right pane is search: type plain text and press Enter. Results are the stored messages ranked by vector distance to your query, closest first, with the distance shown. An empty query shows nothing.
 
-## Redeployment: the app moves out of the edge function
+## Architecture
 
-Disposition recorded 2026-08-30, decisions completed 2026-08-31, implemented the same day. This section records why the application moved and the decisions behind it; the deployment steps live in the Deploy section above.
+### The container
 
-### Why the app is moving
-
-The web page used to reach the cluster embedded inside a Kubernetes resource: `make crs` took the Vite-built page, wrapped it JSON-escaped into the `semgrep` Function CR, and packaged that into `crs/semgrep.yaml`. The built page outgrew the Kubernetes CR size limit, so that delivery path stopped working — the manifest could not be applied once the embedded page pushed it over the limit.
-
-Only the page delivery changes. The `semgrep-api` edge function and the schema Migration are unaffected: they remain in `crs/semgrep.yaml` and deploy exactly as before.
-
-### The new shape
-
-The page moves into a Docker image named `semgrep`, which replaces the current `semgrep-generator` image. It is built on the same `python:3.12-slim` base the generator uses today, with nginx added from the Debian package repository.
-
-Two processes run in the container:
+The `semgrep` image is `python:3.12-slim` with nginx added from the Debian package repository. Two processes run in the container:
 
 - **nginx**, in the foreground, serving the page.
-- **`semgrep-generator`**, the existing message-generator loop, unchanged.
+- **`semgrep-generator`**, the message-generator loop.
 
-The container's entrypoint starts both in the background and then waits with `wait -n`. The moment either process exits, the entrypoint kills the other and exits nonzero — the container dies as a whole, and Kubernetes restarts it. This is the same supervision pattern used by the cockroachdb-omnibox entrypoint, where CockroachDB and an embedded workload share one container.
+The entrypoint starts both in the background and waits with `wait -n`. The moment either process exits, the entrypoint kills the other and exits nonzero — the container dies as a whole, and Kubernetes restarts it.
 
-### How the page gets its configuration
+### Page configuration
 
-The page runs in the browser, and the browser cannot read the container's environment. So the two values the page needs — the platform's anon key, and the external URL of the API gateway — have to be baked into the HTML before it is served. That happens in three stages:
+The page runs in the browser, and the browser cannot read the container's environment. So the two values the page needs — the platform's anon key, and the external URL of the API gateway — are baked into the HTML before it is served. That happens in three stages:
 
-1. **In the source.** `ui/src/client.ts` carries placeholder string literals: the existing `__SUPABASE_ANON_KEY__`, plus a new placeholder for the gateway URL. The Vite build (`make ui`) copies these literals verbatim into the single-file bundle, so the built HTML contains both placeholder strings. The build knows nothing about any real key or URL.
+1. **In the source.** `ui/src/client.ts` carries two placeholder string literals, one for the anon key and one for the gateway URL. The Vite build copies these literals verbatim into the single-file bundle, so the built HTML contains both placeholder strings. The build knows nothing about any real key or URL.
 
-2. **At container start.** The entrypoint replaces both placeholders in the HTML with the values of two environment variables (a one-time `sed`), then starts nginx. The substitution happens once because the environment is fixed for the lifetime of the pod. This replaces the per-request `replaceAll` that the `functions/semgrep/index.ts` edge function performs today.
+2. **At container start.** The entrypoint replaces both placeholders in the HTML with the values of two environment variables (a one-time `sed`), then starts nginx. The substitution happens once because the environment is fixed for the lifetime of the pod.
 
 3. **At serve time.** nginx serves the finished static file. Nothing is computed per request.
 
-The environment variables reach the container exactly the way the generator's do today — set on the Deployment at deployment time. The generator already reads `SEMGREP_URL` (a literal value in the manifest) and `SUPABASE_SERVICE_ROLE_KEY` (a `secretKeyRef` into the platform's `supabase-jwt` secret). The page's two values ride the same mechanism: the anon key comes from the same `supabase-jwt` secret (its `anon-key` entry, beside the `service-key` the generator uses), and the external gateway URL is a literal value chosen at deployment time. The container's complete environment is therefore:
+The environment variables are set on the Deployment. The container's complete environment:
 
 | Variable | Consumer | Source |
 |---|---|---|
 | `SEMGREP_URL` | generator loop | literal — in-cluster gateway URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | generator loop | secret `supabase-jwt`, key `service-key` |
-| anon key | page (via substitution) | secret `supabase-jwt`, key `anon-key` |
-| external gateway URL | page (via substitution) | set on the cluster with kubectl at deployment time |
+| `SUPABASE_ANON_KEY` | page (via substitution) | secret `supabase-jwt`, key `anon-key` |
+| `SEMGREP_EXTERNAL_URL` | page (via substitution) | set on the cluster with kubectl at deployment time |
 
-### Where it runs
-
-The container deploys into the same Kubernetes cluster as the platform and gets its own URL: the same hostname as the gateway, on its own public port. The working example is port 9001, beside the gateway's 9000. The port appears nowhere in this repository's artifacts — it is chosen at deployment time and configured on the cluster with kubectl; the steps are documented in the Deploy section above.
-
-The packaging keeps its original single-deployable shape: `crs/semgrep.yaml` carries three resources — the schema Migration, the `semgrep-api` Function, and the `semgrep` Deployment. The Deployment ships at 0 replicas; it is configured (URL, port) and scaled up on the cluster at deployment time.
+The public port and the external URL appear nowhere in this repository's artifacts. The Deployment ships in `crs/semgrep.yaml` at 0 replicas; it is configured (URL, port) and scaled up on the cluster at deployment time, per the Deploy section.
 
 ### Cross-origin calls and HTTPS
 
-Serving the page from its own port means every API call it makes is cross-origin: the page's origin is `host:9001`, the APIs are at `host:9000`. This was probed live against the envoy gateway before being accepted: for all three path families the page uses — `/rest/v1` (the feed), `/functions/v1` (add, search, stats), and `/auth/v1` (login and signup) — envoy answers CORS preflights with 200, echoes the requesting origin in `access-control-allow-origin`, and allows the requested headers. The page therefore calls the gateway directly; there is no proxy and no CORS configuration anywhere in this repository.
+The page is served from its own port, so every API call it makes is cross-origin — for example, page origin `host:9001`, APIs at `host:9000`. The envoy gateway answers the CORS preflights for all three path families the page uses — `/rest/v1` (the feed), `/functions/v1` (add, search, stats), and `/auth/v1` (login and signup) — echoing the requesting origin and allowing the requested headers. The page therefore calls the gateway directly; there is no proxy and no CORS configuration anywhere in this repository.
 
-One production rule follows from this setup: browsers block plain-HTTP requests made from an HTTPS page (mixed content). If the page is ever served over HTTPS, the injected gateway URL must switch to HTTPS at the same time. Both are deployment-time values, so this is an operational rule for whoever deploys — not a code change.
-
-### Loose ends that are work, not questions
-
-The repository side of this move is implemented: the edge-function delivery path is retired, and the packaging produces the two-resource manifest plus the generated Deployment manifest. Two operational steps remain on the cluster, both covered in the Deploy section above: deleting the deployed `supabase-semgrep-function` Function CR, and moving the platform's `siteUrl` to the app's URL at the next helm upgrade.
+One rule follows from this setup: browsers block plain-HTTP requests made from an HTTPS page (mixed content). If the page is ever served over HTTPS, the injected gateway URL must switch to HTTPS at the same time. Both are deployment-time values, so this is an operational rule for whoever deploys — not a code change.
