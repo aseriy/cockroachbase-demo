@@ -89,7 +89,7 @@ kubectl scale deployment semgrep --replicas=1
 
 **8. Open the app** at `http://<hostname>:9001/`.
 
-**9. Point the platform's `siteUrl` at the app** on the next project helm upgrade (`--set auth.siteUrl=http://<hostname>:9001`, per your platform's upgrade procedure), so signup-confirmation emails land on the app instead of the gateway port.
+**9. Allow the app's URL as an auth redirect target.** Signup sends the app's own URL as the confirmation redirect, and the auth service only honors redirect URLs on its allow-list. Add `http://<hostname>:9001/**` (the `/**` glob is required) to the auth service's `GOTRUE_URI_ALLOW_LIST` — a platform-side setting. The platform's `siteUrl` stays untouched: it is the instance-wide default shared by every app on the same Supabase instance.
 
 ## Usage
 

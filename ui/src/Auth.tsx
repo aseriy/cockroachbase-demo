@@ -18,7 +18,10 @@ export default function Auth() {
       const { error } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { display_name: name.trim() } },
+        options: {
+          data: { display_name: name.trim() },
+          emailRedirectTo: window.location.origin + '/',
+        },
       })
       setNotice(error ? error.message : 'check your email to confirm, then log in')
     } else {
