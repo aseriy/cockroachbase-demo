@@ -134,3 +134,72 @@ The public port and the external URL appear nowhere in this repository's artifac
 The page is served from its own port, so every API call it makes is cross-origin — for example, page origin `host:9001`, APIs at `host:9000`. The envoy gateway answers the CORS preflights for all three path families the page uses — `/rest/v1` (the feed), `/functions/v1` (add, search, stats), and `/auth/v1` (login and signup) — echoing the requesting origin and allowing the requested headers. The page therefore calls the gateway directly; there is no proxy and no CORS configuration anywhere in this repository.
 
 One rule follows from this setup: browsers block plain-HTTP requests made from an HTTPS page (mixed content). If the page is ever served over HTTPS, the injected gateway URL must switch to HTTPS at the same time. Both are deployment-time values, so this is an operational rule for whoever deploys — not a code change.
+
+### Realtime
+
+The platform's realtime service lets pages push messages to each other and see who's online, over a WebSocket through the same gateway the page already uses. Two things it does **not** do on this stack: it cannot stream database changes (`postgres_changes` is unavailable), and it keeps no history — a message sent while a client is disconnected is simply missed.
+
+Everything goes through the `supabase` client the page already has (`ui/src/client.ts`). A channel is a named room: listen for events, subscribe, send.
+
+```ts
+import { supabase } from './client'
+
+const channel = supabase.channel('room-1')
+
+channel
+  .on('broadcast', { event: 'new-message' }, ({ payload }) => {
+    console.log(payload)
+  })
+  .subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      // connected (or reconnected) — re-fetch the feed here
+    }
+  })
+
+channel.send({ type: 'broadcast', event: 'new-message', payload: { body: 'hi' } })
+```
+
+Presence answers "who's here right now". Announce yourself and read the room:
+
+```ts
+channel.on('presence', { event: 'sync' }, () => console.log(channel.presenceState()))
+// after SUBSCRIBED:
+channel.track({ name: 'alice' })
+```
+
+By default any channel is public. To restrict one, join with `supabase.channel('room-1', { config: { private: true } })` — then the sender's database role must pass an RLS policy on `realtime.messages`:
+
+```sql
+CREATE POLICY room1_broadcast ON realtime.messages FOR INSERT
+  TO authenticated
+  WITH CHECK (realtime.topic() = 'room-1' AND extension = 'broadcast');
+```
+
+The one gotcha: without a matching policy, sending to a private channel looks successful but nobody receives anything.
+
+#### Connection mechanics
+
+The client manages the socket itself. Every 25 seconds it sends a heartbeat frame and the server must answer; one missed reply and the client declares the connection dead, tears it down, and reconnects on its own with a 1 s / 2 s / 5 s / 10 s backoff. Connection health is observable without touching any of this:
+
+```ts
+supabase.realtime.onHeartbeat((status, latency) => {
+  // status: 'sent' | 'ok' | 'error' | 'timeout' | 'disconnected'
+})
+```
+
+One browser caveat: hidden tabs get their timers throttled, so heartbeats can stop and the connection drops — and the client waits until the tab is visible again before reconnecting. If the connection must survive in a background tab, create the client with `{ realtime: { worker: true } }` to run the heartbeat in a Web Worker instead.
+
+The `subscribe` status callback is where the app sees all of this:
+
+| Status | Fires when | What to do |
+|---|---|---|
+| `SUBSCRIBED` | joined, or rejoined after an outage | re-fetch missed data |
+| `CHANNEL_ERROR` | join rejected, socket error, heartbeat timeout, or connection lost | show degraded state; the client is already reconnecting |
+| `TIMED_OUT` | the join itself got no reply within 10 s | same as `CHANNEL_ERROR` |
+| `CLOSED` | the channel was closed | resubscribe if it wasn't intentional |
+
+States can flap in quick succession during network jitter (`CHANNEL_ERROR` → `CLOSED` → `SUBSCRIBED` within a second or two), so react to the state you end up in, not to every transition.
+
+Under the hood the transport is the Phoenix channel protocol — `phx_join` to subscribe, `phx_reply` for answers, `phx_error`/`phx_close` for failures. The client handles all of it; it's listed here for reading gateway and server logs, not for the app to implement. One server behavior worth knowing: join rejections are deliberately delayed server-side, so don't wrap `subscribe()` in a tight retry loop.
+
+Your only job is in the status callback: `CHANNEL_ERROR` or `CLOSED` means you are currently missing messages, and when `SUBSCRIBED` fires again you re-fetch from the REST API (for this app, the feed's `/rest/v1/messages` query), because realtime never replays what you missed. REST stays the source of truth; realtime only tells you when to look.
