@@ -18,8 +18,6 @@ export default function TopBar({ session }: { session: Session | null }) {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 10000)
-    return () => clearInterval(timer)
   }, [])
 
   const who = session

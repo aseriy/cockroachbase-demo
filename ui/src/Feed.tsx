@@ -19,8 +19,6 @@ export default function Feed({ session }: { session: Session | null }) {
 
   useEffect(() => {
     load()
-    const timer = setInterval(load, 2000)
-    return () => clearInterval(timer)
   }, [])
 
   async function send() {
@@ -33,7 +31,6 @@ export default function Feed({ session }: { session: Session | null }) {
       headers: { ...authHeaders(session.access_token), 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     })
-    load()
   }
 
   return (

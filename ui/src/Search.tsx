@@ -28,10 +28,8 @@ export default function Search({ session }: { session: Session }) {
       }
     }
     fetchHits()
-    const timer = setInterval(fetchHits, 2000)
     return () => {
       stale = true
-      clearInterval(timer)
     }
   }, [active])
 
