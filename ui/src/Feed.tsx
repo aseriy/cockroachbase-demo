@@ -2,10 +2,9 @@ import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { API_BASE, HEADERS, authHeaders } from './client'
 import Auth from './Auth'
+import type { Message } from './App'
 
-type Message = { id: string; body: string; author: string | null; created_at: string }
-
-export default function Feed({ session }: { session: Session | null }) {
+export default function Feed({ session, latest }: { session: Session | null; latest: Message | null }) {
   const [messages, setMessages] = useState<Message[]>([])
   const [draft, setDraft] = useState('')
 
@@ -20,6 +19,12 @@ export default function Feed({ session }: { session: Session | null }) {
   useEffect(() => {
     load()
   }, [])
+
+  // A row arriving over realtime goes to the top; the list keeps the newest 50.
+  useEffect(() => {
+    if (!latest) return
+    setMessages((prev) => (prev.some((m) => m.id === latest.id) ? prev : [latest, ...prev].slice(0, 50)))
+  }, [latest])
 
   async function send() {
     if (!session) return

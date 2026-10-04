@@ -4,7 +4,7 @@ import { API_BASE, HEADERS, supabase } from './client'
 
 type Stats = { messages: number; online: number }
 
-export default function TopBar({ session }: { session: Session | null }) {
+export default function TopBar({ session, inserted }: { session: Session | null; inserted: number }) {
   const [stats, setStats] = useState<Stats | null>(null)
 
   async function load() {
@@ -35,7 +35,7 @@ export default function TopBar({ session }: { session: Session | null }) {
         )}
       </div>
       <div className="counts">
-        {stats ? `${stats.online} signed in · ${stats.messages} messages` : ''}
+        {stats ? `${stats.online} signed in · ${stats.messages + inserted} messages` : ''}
       </div>
     </div>
   )

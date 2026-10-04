@@ -93,7 +93,7 @@ kubectl scale deployment semgrep --replicas=1
 
 ## Usage
 
-The left pane shows the newest messages that fit on screen, updating every couple of seconds — new messages appear at the top and old ones fall off. Type into the input at the bottom and press Enter to add a message; it is embedded and stored in the same request.
+The left pane shows the newest messages that fit on screen; new messages appear at the top as they are written, pushed by the platform's realtime service, and old ones fall off. Type into the input at the bottom and press Enter to add a message; it is embedded and stored in the same request.
 
 The right pane is search: type plain text and press Enter. Results are the stored messages ranked by vector distance to your query, closest first, with the distance shown. An empty query shows nothing.
 
@@ -137,7 +137,7 @@ One rule follows from this setup: browsers block plain-HTTP requests made from a
 
 ### Realtime
 
-The platform's realtime service lets pages push messages to each other and see who's online, over a WebSocket through the same gateway the page already uses. Two things it does **not** do on this stack: it cannot stream database changes (`postgres_changes` is unavailable), and it keeps no history — a message sent while a client is disconnected is simply missed.
+The platform's realtime service streams database changes (`postgres_changes`), lets pages push messages to each other, and shows who's online, over a WebSocket through the same gateway the page already uses. The feed uses the first: one channel subscribed to `INSERT` on `public.messages`, each arriving row placed at the top of the list and counted in the top bar. One thing it does **not** do: it keeps no history — a change or message sent while a client is disconnected is simply missed.
 
 Everything goes through the `supabase` client the page already has (`ui/src/client.ts`). A channel is a named room: listen for events, subscribe, send.
 
