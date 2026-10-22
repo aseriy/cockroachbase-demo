@@ -3,3 +3,5 @@ build/
 crs/
 ui/node_modules/
 generator/index.html
+__pycache__/
+generator/poetry.lock

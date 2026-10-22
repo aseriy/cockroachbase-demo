@@ -48,8 +48,9 @@ CREATE TABLE IF NOT EXISTS ticker (
   symbol varchar(14) PRIMARY KEY,
   exchange char(3) REFERENCES exchange(code),
   name text,
-  profile jsonb,
-  active boolean NOT NULL DEFAULT true
+  info jsonb,
+  active boolean NOT NULL DEFAULT false
 );
 ALTER TABLE ticker OWNER TO postgres;
 GRANT SELECT ON ticker TO anon, authenticated, service_role;
+GRANT UPDATE ON ticker TO service_role;
