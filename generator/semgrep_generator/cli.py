@@ -7,7 +7,8 @@ import time
 from typing import Optional
 
 import click
-import requests
+from supabase import create_client, Client
+from supabase.client import ClientOptions
 
 from . import datagen
 
@@ -27,18 +28,8 @@ def _generate(name: str) -> Optional[str]:
     return getattr(module, name)()
 
 
-def _post_message(url: str, service_key: str, text: str) -> None:
-    response = requests.post(
-        f"{url}/functions/v1/semgrep-api",
-        headers={
-            "apikey": service_key,
-            "Authorization": f"Bearer {service_key}",
-            "Content-Type": "application/json",
-        },
-        json={"text": text},
-        timeout=30,
-    )
-    response.raise_for_status()
+def _post_message(client: Client, text: str) -> None:
+    client.functions.invoke("semgrep-api", invoke_options={"body": {"text": text}})
 
 
 @click.command(short_help="Feed generated messages to the semgrep board")
@@ -47,6 +38,7 @@ def cli() -> None:
 
     url = os.environ["SEMGREP_URL"].rstrip("/")
     service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+    client = create_client(url, service_key, options=ClientOptions(function_client_timeout=30))
 
     sources = _source_names()
     logger.info(f"sources: {', '.join(sources)}")
@@ -57,7 +49,7 @@ def cli() -> None:
         try:
             text = _generate(name)
             if text:
-                _post_message(url, service_key, text)
+                _post_message(client, text)
                 logger.info(f"{name}: {text}")
             else:
                 logger.warning(f"{name}: produced no message; skipped")
