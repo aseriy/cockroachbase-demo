@@ -26,7 +26,7 @@ $$;
 GRANT EXECUTE ON FUNCTION search_messages TO anon, authenticated, service_role;
 
 CREATE TABLE IF NOT EXISTS exchange (
-  code text PRIMARY KEY,
+  code char(3) PRIMARY KEY,
   name text,
   open time NOT NULL,
   close time NOT NULL,
@@ -45,8 +45,8 @@ INSERT INTO exchange (code, name, open, close, tz) VALUES
   ('FRA', 'Börse Frankfurt',             '08:00', '22:00', 'Europe/Berlin');
 
 CREATE TABLE IF NOT EXISTS ticker (
-  symbol text PRIMARY KEY,
-  exchange text NOT NULL REFERENCES exchange(code),
+  symbol varchar(14) PRIMARY KEY,
+  exchange char(3) REFERENCES exchange(code),
   name text,
   profile jsonb,
   active boolean NOT NULL DEFAULT true

@@ -16,7 +16,7 @@ sed -i \
 nginx -g 'daemon off;' &
 
 # Start the message generator in the background
-semgrep-generator &
+generator_messages &
 
 # Wait for ANY background process to exit or fail
 wait -n

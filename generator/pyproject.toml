@@ -14,7 +14,8 @@ dependencies = [
 packages = [{ include = "semgrep_generator" }]
 
 [tool.poetry.scripts]
-semgrep-generator = "semgrep_generator.cli:cli"
+generator_messages = "semgrep_generator.cli:messages"
+generator_quotes = "semgrep_generator.cli:quotes"
 
 [build-system]
 requires = ["poetry-core>=1.9.0"]
