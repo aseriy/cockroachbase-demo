@@ -24,3 +24,32 @@ LANGUAGE sql STABLE AS $$
   LIMIT 20
 $$;
 GRANT EXECUTE ON FUNCTION search_messages TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS exchange (
+  code text PRIMARY KEY,
+  name text,
+  open time NOT NULL,
+  close time NOT NULL,
+  tz text NOT NULL
+);
+ALTER TABLE exchange OWNER TO postgres;
+GRANT SELECT ON exchange TO anon, authenticated, service_role;
+INSERT INTO exchange (code, name, open, close, tz) VALUES
+  ('NYQ', 'New York Stock Exchange',     '09:30', '16:00', 'America/New_York'),
+  ('NMS', 'Nasdaq Global Select Market', '09:30', '16:00', 'America/New_York'),
+  ('NGM', 'Nasdaq Global Market',        '09:30', '16:00', 'America/New_York'),
+  ('NCM', 'Nasdaq Capital Market',       '09:30', '16:00', 'America/New_York'),
+  ('JPX', 'Tokyo Stock Exchange',        '09:00', '15:30', 'Asia/Tokyo'),
+  ('PAR', 'Euronext Paris',              '09:00', '17:35', 'Europe/Paris'),
+  ('GER', 'XETRA',                       '09:00', '17:30', 'Europe/Berlin'),
+  ('FRA', 'Börse Frankfurt',             '08:00', '22:00', 'Europe/Berlin');
+
+CREATE TABLE IF NOT EXISTS ticker (
+  symbol text PRIMARY KEY,
+  exchange text NOT NULL REFERENCES exchange(code),
+  name text,
+  profile jsonb,
+  active boolean NOT NULL DEFAULT true
+);
+ALTER TABLE ticker OWNER TO postgres;
+GRANT SELECT ON ticker TO anon, authenticated, service_role;
