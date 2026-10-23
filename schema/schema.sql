@@ -54,3 +54,17 @@ CREATE TABLE IF NOT EXISTS ticker (
 ALTER TABLE ticker OWNER TO postgres;
 GRANT SELECT ON ticker TO anon, authenticated, service_role;
 GRANT UPDATE ON ticker TO service_role;
+
+CREATE TABLE IF NOT EXISTS ticker_price (
+  symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
+  ts timestamptz NOT NULL,
+  open float8 NOT NULL,
+  high float8 NOT NULL,
+  low float8 NOT NULL,
+  close float8 NOT NULL,
+  volume int8 NOT NULL,
+  PRIMARY KEY (symbol, ts) USING HASH
+);
+ALTER TABLE ticker_price OWNER TO postgres;
+GRANT SELECT ON ticker_price TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE ON ticker_price TO service_role;
