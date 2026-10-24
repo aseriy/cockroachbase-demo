@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, time, timedelta, timezone
+from time import monotonic, sleep
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -11,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 HISTORY_SECONDS = 691200 - 5
 UPSERT_ROWS = 180
+PASS_INTERVAL_SECONDS = 300
 
 
 def _tickers_missing_info() -> list[str]:
@@ -74,8 +76,13 @@ def _upsert_bars(rows: list[dict]) -> None:
         client.table("ticker_price").upsert(rows[i:i + UPSERT_ROWS], on_conflict="symbol,ts").execute()
 
 
-def run_quotes(args: dict) -> None:
-    symbols = _tickers_missing_info()
+def _run_pass() -> None:
+    try:
+        symbols = _tickers_missing_info()
+    except Exception as error:
+        logger.error(f"tickers missing info: {error}")
+        symbols = []
+
     logger.info(f"tickers missing info: {len(symbols)}")
 
     for symbol in symbols:
@@ -86,8 +93,17 @@ def run_quotes(args: dict) -> None:
         except Exception as error:
             logger.error(f"{symbol}: {error}")
 
-    exchanges = _exchanges()
-    tickers = _active_tickers()
+    try:
+        exchanges = _exchanges()
+    except Exception as error:
+        logger.error(f"exchanges: {error}")
+        exchanges = {}
+
+    try:
+        tickers = _active_tickers()
+    except Exception as error:
+        logger.error(f"active tickers: {error}")
+        tickers = []
 
     due = []
     for ticker in tickers:
@@ -112,3 +128,10 @@ def run_quotes(args: dict) -> None:
             logger.info(f"{symbol}: {len(rows)} bars")
         except Exception as error:
             logger.error(f"{symbol}: {error}")
+
+
+def run_quotes(args: dict) -> None:
+    while True:
+        started = monotonic()
+        _run_pass()
+        sleep(max(0.0, PASS_INTERVAL_SECONDS - (monotonic() - started)))
