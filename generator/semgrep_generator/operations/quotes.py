@@ -76,7 +76,7 @@ def _upsert_bars(rows: list[dict]) -> None:
         client.table("ticker_price").upsert(rows[i:i + UPSERT_ROWS], on_conflict="symbol,ts").execute()
 
 
-def _run_pass() -> None:
+def _run_pass(first: bool) -> None:
     try:
         symbols = _tickers_missing_info()
     except Exception as error:
@@ -110,7 +110,7 @@ def _run_pass() -> None:
         exchange = exchanges.get(ticker["exchange"])
         if exchange is None:
             logger.info(f"{ticker['symbol']}: skipped, no exchange")
-        elif not _is_open(exchange):
+        elif not first and not _is_open(exchange):
             logger.info(f"{ticker['symbol']}: skipped, closed")
         else:
             due.append(ticker["symbol"])
@@ -131,7 +131,9 @@ def _run_pass() -> None:
 
 
 def run_quotes(args: dict) -> None:
+    first = True
     while True:
         started = monotonic()
-        _run_pass()
+        _run_pass(first)
+        first = False
         sleep(max(0.0, PASS_INTERVAL_SECONDS - (monotonic() - started)))
