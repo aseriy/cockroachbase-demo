@@ -18,6 +18,7 @@ packages = [{ include = "semgrep_generator" }]
 generator_messages = "semgrep_generator.cli:messages"
 generator_quotes = "semgrep_generator.cli:quotes"
 generator_ticker = "semgrep_generator.cli:ticker"
+generator_news = "semgrep_generator.cli:news"
 
 [build-system]
 requires = ["poetry-core>=1.9.0"]
