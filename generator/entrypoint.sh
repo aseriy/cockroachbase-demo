@@ -21,6 +21,9 @@ generator_messages &
 # Start the quotes generator in the background
 generator_quotes &
 
+# Start the ticker info generator in the background
+generator_ticker &
+
 # Wait for ANY background process to exit or fail
 wait -n
 

@@ -5,8 +5,9 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
+from supabase import Client
 
-from .common import client
+from .common import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +16,12 @@ UPSERT_ROWS = 180
 PASS_INTERVAL_SECONDS = 300
 
 
-def _exchanges() -> dict:
+def _exchanges(client: Client) -> dict:
     rows = client.table("exchange").select("code, open, close, tz").execute().data
     return {row["code"]: row for row in rows}
 
 
-def _active_tickers() -> list[dict]:
+def _active_tickers(client: Client) -> list[dict]:
     return client.table("ticker").select("symbol, exchange").eq("active", True).execute().data
 
 
@@ -29,7 +30,7 @@ def _is_open(exchange: dict) -> bool:
     return time.fromisoformat(exchange["open"]) <= now <= time.fromisoformat(exchange["close"])
 
 
-def _latest_ts(symbol: str) -> Optional[datetime]:
+def _latest_ts(client: Client, symbol: str) -> Optional[datetime]:
     rows = client.table("ticker_price").select("ts").eq("symbol", symbol).order("ts", desc=True).limit(1).execute().data
     return datetime.fromisoformat(rows[0]["ts"]) if rows else None
 
@@ -58,20 +59,20 @@ def _rows(symbol: str, bars) -> list[dict]:
     ]
 
 
-def _upsert_bars(rows: list[dict]) -> None:
+def _upsert_bars(client: Client, rows: list[dict]) -> None:
     for i in range(0, len(rows), UPSERT_ROWS):
         client.table("ticker_price").upsert(rows[i:i + UPSERT_ROWS], on_conflict="symbol,ts").execute()
 
 
-def _run_pass(first: bool) -> None:
+def _run_pass(client: Client, first: bool) -> None:
     try:
-        exchanges = _exchanges()
+        exchanges = _exchanges(client)
     except Exception as error:
         logger.error(f"exchanges: {error}")
         exchanges = {}
 
     try:
-        tickers = _active_tickers()
+        tickers = _active_tickers(client)
     except Exception as error:
         logger.error(f"active tickers: {error}")
         tickers = []
@@ -91,20 +92,21 @@ def _run_pass(first: bool) -> None:
     for symbol in due:
         try:
             end = datetime.now(timezone.utc) - timedelta(minutes=1)
-            latest = _latest_ts(symbol)
+            latest = _latest_ts(client, symbol)
             start = _window_start(latest, end)
             bars = _fetch_bars(symbol, start, end)
             rows = _rows(symbol, bars)
-            _upsert_bars(rows)
+            _upsert_bars(client, rows)
             logger.info(f"{symbol}: {len(rows)} bars")
         except Exception as error:
             logger.error(f"{symbol}: {error}")
 
 
 def run_quotes(args: dict) -> None:
+    client = get_client()
     first = True
     while True:
         started = monotonic()
-        _run_pass(first)
+        _run_pass(client, first)
         first = False
         sleep(max(0.0, PASS_INTERVAL_SECONDS - (monotonic() - started)))

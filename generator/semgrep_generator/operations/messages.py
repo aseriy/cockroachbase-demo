@@ -8,7 +8,7 @@ from typing import Optional
 from supabase import Client
 
 from .. import datagen
-from .common import client
+from .common import get_client
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,7 @@ def _post_message(client: Client, text: str) -> None:
 
 
 def run_messages(args: dict) -> None:
+    client = get_client()
     sources = _source_names()
     logger.info(f"sources: {', '.join(sources)}")
 
