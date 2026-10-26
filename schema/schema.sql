@@ -71,7 +71,9 @@ GRANT INSERT, UPDATE ON ticker_price TO service_role;
 
 CREATE TABLE IF NOT EXISTS yahoo_news (
   id uuid PRIMARY KEY,
-  publication jsonb NOT NULL DEFAULT '{}'::jsonb
+  publication jsonb NOT NULL DEFAULT '{}'::jsonb,
+  extracted boolean NOT NULL DEFAULT false,
+  llama_index jsonb
 );
 ALTER TABLE yahoo_news OWNER TO postgres;
 GRANT SELECT ON yahoo_news TO anon, authenticated, service_role;

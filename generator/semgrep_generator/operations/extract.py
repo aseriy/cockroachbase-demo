@@ -120,6 +120,10 @@ async def _upload(client: AsyncClient, id: str, text: str) -> None:
     await client.storage.from_(BUCKET).upload(f"{id}.md", text.encode("utf-8"), file_options={"content-type": "text/markdown", "upsert": "true"})
 
 
+async def _update_yahoo_news(client: AsyncClient, id: str) -> None:
+    await client.table("yahoo_news").update({"extracted": True}).eq("id", id).execute()
+
+
 async def _process(client: AsyncClient, lock: asyncio.Lock, row: dict) -> None:
     async with lock:
         try:
@@ -127,6 +131,7 @@ async def _process(client: AsyncClient, lock: asyncio.Lock, row: dict) -> None:
             link = row["publication"]["link"]
             text = await asyncio.to_thread(_extract, link)
             await _upload(client, id, text)
+            await _update_yahoo_news(client, id)
             logger.info(f"{id}: {link}")
         except Exception as error:
             logger.error(f"{row.get('id')}: {error}")
