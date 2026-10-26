@@ -2,7 +2,7 @@
 name = "semgrep-generator"
 version = "0.1.0"
 description = "Feeds generated messages to the semgrep demo board"
-requires-python = ">=3.12.3"
+requires-python = ">=3.12.3,<4.0"
 dependencies = [
     "click==8.5.0",
     "requests==2.34.2",
@@ -11,6 +11,9 @@ dependencies = [
     "pandas (==3.1.0)",
     "trafilatura==2.3.1",
     "pyyaml==6.0.3",
+    "llama-index==0.14.25",
+    "llama-index-llms-openai==0.7.10",
+    "llama-index-embeddings-openai==0.6.0",
 ]
 
 [tool.poetry]
@@ -22,6 +25,7 @@ generator_quotes = "semgrep_generator.cli:quotes"
 generator_ticker = "semgrep_generator.cli:ticker"
 generator_news = "semgrep_generator.cli:news"
 generator_extract = "semgrep_generator.cli:extract"
+generator_index = "semgrep_generator.cli:index"
 
 [build-system]
 requires = ["poetry-core>=1.9.0"]
