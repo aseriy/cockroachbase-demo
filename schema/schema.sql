@@ -70,9 +70,11 @@ GRANT SELECT ON ticker_price TO anon, authenticated, service_role;
 GRANT INSERT, UPDATE ON ticker_price TO service_role;
 
 CREATE TABLE IF NOT EXISTS yahoo_news (
-  uuid uuid PRIMARY KEY,
+  id uuid PRIMARY KEY,
   publication jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 ALTER TABLE yahoo_news OWNER TO postgres;
 GRANT SELECT ON yahoo_news TO anon, authenticated, service_role;
 GRANT INSERT, UPDATE ON yahoo_news TO service_role;
+
+INSERT INTO storage.buckets (id, name, public) VALUES ('yahoo-news', 'yahoo-news', false) ON CONFLICT (id) DO NOTHING;

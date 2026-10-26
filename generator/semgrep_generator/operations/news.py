@@ -21,7 +21,7 @@ def _search_news(symbol: str) -> list[dict]:
 
 def _log_news(client: Client, items: list[dict]) -> None:
     if items:
-        client.table("yahoo_news").upsert([{"uuid": item["uuid"], "publication": item} for item in items], on_conflict="uuid", ignore_duplicates=True).execute()
+        client.table("yahoo_news").upsert([{"id": item["uuid"], "publication": item} for item in items], on_conflict="id", ignore_duplicates=True).execute()
 
 
 def run_news(args: dict) -> None:

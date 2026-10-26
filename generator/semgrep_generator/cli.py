@@ -2,7 +2,7 @@ import logging
 
 import click
 
-from .operations import run_messages, run_news, run_quotes, run_ticker
+from .operations import run_extract, run_messages, run_news, run_quotes, run_ticker
 
 
 @click.group()
@@ -32,6 +32,12 @@ def ticker() -> None:
 def news() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     run_news({})
+
+
+@cli.command(short_help="Extract Yahoo news articles to the yahoo-news bucket")
+def extract() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    run_extract({})
 
 
 if __name__ == "__main__":
