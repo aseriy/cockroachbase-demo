@@ -80,3 +80,12 @@ GRANT SELECT ON yahoo_news TO anon, authenticated, service_role;
 GRANT INSERT, UPDATE ON yahoo_news TO service_role;
 
 INSERT INTO storage.buckets (id, name, public) VALUES ('yahoo-news', 'yahoo-news', false) ON CONFLICT (id) DO NOTHING;
+
+DROP FUNCTION IF EXISTS yahoo_news_latest_mvcc_timestamp;
+CREATE OR REPLACE FUNCTION yahoo_news_latest_mvcc_timestamp()
+RETURNS DECIMAL
+LANGUAGE sql STABLE AS $$
+  SELECT max(crdb_internal_mvcc_timestamp)
+  FROM yahoo_news
+$$;
+GRANT EXECUTE ON FUNCTION yahoo_news_latest_mvcc_timestamp TO anon, authenticated, service_role;

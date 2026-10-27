@@ -16,6 +16,8 @@ BUCKET = "yahoo-news"
 CONNECTION_CHECK_SECONDS = 30
 CONNECTION_FAILED_CHECKS = 3
 RESTART_SECONDS = 5
+BACKFILL_ROWS = 1000
+PROCESS_ATTEMPTS = 3
 
 
 def _is_heading(line: str) -> bool:
@@ -112,8 +114,12 @@ def _extract(url: str) -> str:
     return "---\n" + front_matter + "\n---\n\n" + "\n".join(lines) + "\n"
 
 
-async def _rows(client: AsyncClient) -> list[dict]:
-    return (await client.table("yahoo_news").select("id, publication").execute()).data
+async def _cutoff(client: AsyncClient) -> str:
+    return (await client.rpc("yahoo_news_latest_mvcc_timestamp").execute()).data
+
+
+async def _rows(client: AsyncClient, cutoff: str) -> list[dict]:
+    return (await client.table("yahoo_news").select("id, publication").eq("extracted", False).lte("crdb_internal_mvcc_timestamp", cutoff).limit(BACKFILL_ROWS).execute()).data
 
 
 async def _upload(client: AsyncClient, id: str, text: str) -> None:
@@ -124,7 +130,7 @@ async def _update_yahoo_news(client: AsyncClient, id: str) -> None:
     await client.table("yahoo_news").update({"extracted": True}).eq("id", id).execute()
 
 
-async def _process(client: AsyncClient, lock: asyncio.Lock, row: dict) -> None:
+async def _process(client: AsyncClient, lock: asyncio.Lock, row: dict) -> bool:
     async with lock:
         try:
             id = row["id"]
@@ -133,21 +139,36 @@ async def _process(client: AsyncClient, lock: asyncio.Lock, row: dict) -> None:
             await _upload(client, id, text)
             await _update_yahoo_news(client, id)
             logger.info(f"{id}: {link}")
+            return True
         except Exception as error:
             logger.error(f"{row.get('id')}: {error}")
+            return False
 
 
 async def _backfill(client: AsyncClient, lock: asyncio.Lock) -> None:
     try:
-        rows = await _rows(client)
+        cutoff = await _cutoff(client)
     except Exception as error:
         logger.error(f"yahoo_news: {error}")
-        rows = []
+        return
 
-    logger.info(f"publications: {len(rows)}")
+    while True:
+        try:
+            rows = await _rows(client, cutoff)
+        except Exception as error:
+            logger.error(f"yahoo_news: {error}")
+            return
 
-    for row in rows:
-        await _process(client, lock, row)
+        if not rows:
+            return
+
+        logger.info(f"publications: {len(rows)}")
+
+        for row in rows:
+            for attempt in range(PROCESS_ATTEMPTS):
+                if await _process(client, lock, row):
+                    break
+                await asyncio.sleep(attempt + 1)
 
 
 async def _serve(client: AsyncClient) -> None:
@@ -162,7 +183,7 @@ async def _serve(client: AsyncClient) -> None:
     def on_status(status: RealtimeSubscribeStates, error) -> None:
         if status == RealtimeSubscribeStates.SUBSCRIBED:
             logger.info(f"{CHANNEL}: subscribed")
-            # asyncio.create_task(_backfill(client, lock))
+            asyncio.create_task(_backfill(client, lock))
         else:
             logger.error(f"{CHANNEL}: {status} {error}")
             failed.set()
