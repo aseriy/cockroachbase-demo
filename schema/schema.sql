@@ -89,3 +89,15 @@ LANGUAGE sql STABLE AS $$
   FROM yahoo_news
 $$;
 GRANT EXECUTE ON FUNCTION yahoo_news_latest_mvcc_timestamp TO anon, authenticated, service_role;
+
+CREATE TABLE IF NOT EXISTS yahoo_news_index (
+  text_id uuid PRIMARY KEY,
+  doc_id uuid NOT NULL REFERENCES yahoo_news(id),
+  start_char_idx int8 NOT NULL,
+  end_char_idx int8 NOT NULL,
+  embedding VECTOR(1536) NOT NULL,
+  VECTOR INDEX yahoo_news_index_embedding_idx (embedding vector_cosine_ops)
+);
+ALTER TABLE yahoo_news_index OWNER TO postgres;
+GRANT SELECT ON yahoo_news_index TO anon, authenticated, service_role;
+GRANT INSERT, UPDATE, DELETE ON yahoo_news_index TO service_role;

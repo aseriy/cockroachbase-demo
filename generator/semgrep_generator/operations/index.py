@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from llama_index.core import Document, VectorStoreIndex
-from llama_index.core.node_parser import MarkdownNodeParser
+from llama_index.core.node_parser import SentenceSplitter
 from realtime import RealtimeSubscribeStates
 from supabase import AsyncClient
 
@@ -17,10 +17,34 @@ CONNECTION_FAILED_CHECKS = 3
 RESTART_SECONDS = 5
 
 
-def _index(id: str, text: str) -> dict:
-    documents = [Document(text=text, metadata={"source": f"{id}.md"})]
-    index = VectorStoreIndex.from_documents(documents, transformations=[MarkdownNodeParser()])
+def _strip_front_matter(text: str) -> tuple[str, int]:
+    if text.startswith("---\n"):
+        end = text.find("\n---\n\n", 4)
+        if end >= 0:
+            front_matter_size = end + len("\n---\n\n")
+            return text[front_matter_size:], front_matter_size
+    return text, 0
+
+
+def _index(text: str) -> dict:
+    documents = [Document(text=text)]
+    index = VectorStoreIndex.from_documents(documents, transformations=[SentenceSplitter(chunk_size=1024)])
     return index.storage_context.to_dict()
+
+
+def _embedding_rows(id: str, llama_index: dict, front_matter_size: int) -> list[dict]:
+    vector_store = llama_index["vector_store"]["default"]
+    data = llama_index["doc_store"]["docstore/data"]
+    return [
+        {
+            "text_id": text_id,
+            "doc_id": id,
+            "start_char_idx": data[text_id]["__data__"]["start_char_idx"] + front_matter_size,
+            "end_char_idx": data[text_id]["__data__"]["end_char_idx"] + front_matter_size,
+            "embedding": vector_store["embedding_dict"][text_id],
+        }
+        for text_id in vector_store["text_id_to_ref_doc_id"]
+    ]
 
 
 async def _download(client: AsyncClient, id: str) -> str:
@@ -31,12 +55,18 @@ async def _update_yahoo_news(client: AsyncClient, id: str, llama_index: dict) ->
     await client.table("yahoo_news").update({"llama_index": llama_index}).eq("id", id).execute()
 
 
+async def _insert_yahoo_news_index(client: AsyncClient, rows: list[dict]) -> None:
+    await client.table("yahoo_news_index").insert(rows).execute()
+
+
 async def _process(client: AsyncClient, lock: asyncio.Lock, row: dict) -> None:
     async with lock:
         try:
             id = row["id"]
             text = await _download(client, id)
-            llama_index = await asyncio.to_thread(_index, id, text)
+            text, front_matter_size = _strip_front_matter(text)
+            llama_index = await asyncio.to_thread(_index, text)
+            await _insert_yahoo_news_index(client, _embedding_rows(id, llama_index, front_matter_size))
             await _update_yahoo_news(client, id, llama_index)
             logger.info(f"{id}: indexed")
         except Exception as error:
