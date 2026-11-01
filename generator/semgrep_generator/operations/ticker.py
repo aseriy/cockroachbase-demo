@@ -56,9 +56,11 @@ async def _serve(client: AsyncClient) -> None:
     failed = asyncio.Event()
 
     def on_insert(payload: dict) -> None:
-        symbol = payload["data"]["record"]["symbol"]
+        record = payload["data"]["record"]
+        symbol = record["symbol"]
         logger.info(f"{symbol}: inserted")
-        asyncio.create_task(_fill(client, lock, symbol))
+        if record["exchange"] is None or record["name"] is None or record["info"] is None:
+            asyncio.create_task(_fill(client, lock, symbol))
 
     def on_status(status: RealtimeSubscribeStates, error) -> None:
         if status == RealtimeSubscribeStates.SUBSCRIBED:

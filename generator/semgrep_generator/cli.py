@@ -2,7 +2,7 @@ import logging
 
 import click
 
-from .operations import run_extract, run_index, run_messages, run_news, run_quotes, run_ticker
+from .operations import run_extract, run_index, run_messages, run_news, run_quotes, run_ticker, run_ticker_news
 
 
 @click.group()
@@ -44,6 +44,12 @@ def extract() -> None:
 def index() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     run_index({})
+
+
+@cli.command(short_help="Link Yahoo news to tickers in the ticker_news table")
+def ticker_news() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    run_ticker_news({})
 
 
 if __name__ == "__main__":

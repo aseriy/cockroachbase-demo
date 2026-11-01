@@ -18,7 +18,11 @@ def _active_symbols(client: Client) -> list[str]:
 
 
 def _search_news(symbol: str) -> list[dict]:
-    return yf.Search(symbol, news_count=NEWS_COUNT).news
+    items = yf.Search(symbol, news_count=NEWS_COUNT).news
+    for item in items:
+        if not item.get("relatedTickers"):
+            item["relatedTickers"] = [symbol]
+    return items
 
 
 def _log_news(client: Client, items: list[dict]) -> None:

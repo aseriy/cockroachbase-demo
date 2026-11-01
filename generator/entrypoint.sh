@@ -33,6 +33,9 @@ generator_extract &
 # Start the article indexer in the background
 generator_index &
 
+# Start the ticker news linker in the background
+generator_ticker_news &
+
 # Wait for ANY background process to exit or fail
 wait -n
 

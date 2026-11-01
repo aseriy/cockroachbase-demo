@@ -44,6 +44,8 @@ INSERT INTO exchange (code, name, open, close, tz) VALUES
   ('GER', 'XETRA',                       '09:00', '17:30', 'Europe/Berlin'),
   ('FRA', 'Börse Frankfurt',             '08:00', '22:00', 'Europe/Berlin')
 ON CONFLICT (code) DO NOTHING;
+ALTER TABLE exchange ALTER COLUMN open SET DEFAULT '00:00';
+ALTER TABLE exchange ALTER COLUMN close SET DEFAULT '23:59';
 
 CREATE TABLE IF NOT EXISTS ticker (
   symbol varchar(14) PRIMARY KEY,
@@ -102,3 +104,24 @@ CREATE TABLE IF NOT EXISTS yahoo_news_index (
 ALTER TABLE yahoo_news_index OWNER TO postgres;
 GRANT SELECT ON yahoo_news_index TO anon, authenticated, service_role;
 GRANT INSERT, UPDATE, DELETE ON yahoo_news_index TO service_role;
+
+CREATE TABLE IF NOT EXISTS ticker_news (
+  news_id uuid NOT NULL REFERENCES yahoo_news(id),
+  symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
+  PRIMARY KEY (news_id, symbol),
+  INDEX ticker_news_symbol_idx (symbol)
+);
+ALTER TABLE ticker_news OWNER TO postgres;
+GRANT SELECT ON ticker_news TO anon, authenticated, service_role;
+GRANT INSERT, DELETE ON ticker_news TO service_role;
+
+
+CREATE TABLE IF NOT EXISTS ticker_news (
+  news_id uuid NOT NULL REFERENCES yahoo_news(id),
+  symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
+  PRIMARY KEY (news_id, symbol),
+  INDEX ticker_news_symbol_idx (symbol)
+);
+ALTER TABLE ticker_news OWNER TO postgres;
+GRANT SELECT ON ticker_news TO anon, authenticated, service_role;
+GRANT INSERT, DELETE ON ticker_news TO service_role;
