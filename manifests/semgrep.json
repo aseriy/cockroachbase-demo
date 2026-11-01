@@ -1,0 +1,70 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "semgrep",
+    "namespace": "default"
+  },
+  "spec": {
+    "replicas": 0,
+    "selector": {
+      "matchLabels": {
+        "app": "semgrep"
+      }
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "app": "semgrep"
+        }
+      },
+      "spec": {
+        "containers": [
+          {
+            "name": "semgrep",
+            "image": "localhost:5000/semgrep:latest",
+            "imagePullPolicy": "Always",
+            "ports": [
+              {
+                "containerPort": 8080
+              }
+            ],
+            "env": [
+              {
+                "name": "SEMGREP_URL",
+                "value": "http://supabase-envoy:8000"
+              },
+              {
+                "name": "SUPABASE_SERVICE_ROLE_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "name": "supabase-jwt",
+                    "key": "service-key"
+                  }
+                }
+              },
+              {
+                "name": "SUPABASE_ANON_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "name": "supabase-jwt",
+                    "key": "anon-key"
+                  }
+                }
+              },
+              {
+                "name": "OPENAI_API_KEY",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "name": "openai",
+                    "key": "api-key"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

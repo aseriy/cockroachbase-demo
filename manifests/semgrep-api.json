@@ -1,0 +1,16 @@
+{
+  "apiVersion": "core.supabase.io/v1alpha1",
+  "kind": "Function",
+  "metadata": {
+    "name": "supabase-semgrep-api-function",
+    "namespace": "default"
+  },
+  "spec": {
+    "projectRef": "supabase",
+    "functionName": "semgrep-api",
+    "verifyJwt": false,
+    "source": {
+      "index.ts": null
+    }
+  }
+}

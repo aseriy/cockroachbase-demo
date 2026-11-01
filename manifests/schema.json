@@ -1,0 +1,20 @@
+{
+  "apiVersion": "core.supabase.io/v1alpha1",
+  "kind": "Migration",
+  "metadata": {
+    "name": "supabase-semgrep-schema",
+    "namespace": "default"
+  },
+  "spec": {
+    "databaseRef": {
+      "kind": "CockroachDB",
+      "name": "supabase"
+    },
+    "migrations": [
+      {
+        "name": "schema",
+        "sql": null
+      }
+    ]
+  }
+}

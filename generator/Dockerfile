@@ -12,6 +12,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=build /dist/*.whl /tmp/
 RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl
+RUN python -m nltk.downloader -d /usr/share/nltk_data stopwords punkt_tab
+ENV NLTK_DATA=/usr/share/nltk_data
 COPY index.html /app/ui/index.html
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY entrypoint.sh /entrypoint.sh

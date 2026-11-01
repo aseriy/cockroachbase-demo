@@ -42,7 +42,8 @@ INSERT INTO exchange (code, name, open, close, tz) VALUES
   ('JPX', 'Tokyo Stock Exchange',        '09:00', '15:30', 'Asia/Tokyo'),
   ('PAR', 'Euronext Paris',              '09:00', '17:35', 'Europe/Paris'),
   ('GER', 'XETRA',                       '09:00', '17:30', 'Europe/Berlin'),
-  ('FRA', 'Börse Frankfurt',             '08:00', '22:00', 'Europe/Berlin');
+  ('FRA', 'Börse Frankfurt',             '08:00', '22:00', 'Europe/Berlin')
+ON CONFLICT (code) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS ticker (
   symbol varchar(14) PRIMARY KEY,

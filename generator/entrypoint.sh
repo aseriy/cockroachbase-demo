@@ -24,6 +24,15 @@ generator_quotes &
 # Start the ticker info generator in the background
 generator_ticker &
 
+# Start the news generator in the background
+generator_news &
+
+# Start the article extractor in the background
+generator_extract &
+
+# Start the article indexer in the background
+generator_index &
+
 # Wait for ANY background process to exit or fail
 wait -n
 
