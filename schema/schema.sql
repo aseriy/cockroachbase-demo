@@ -84,9 +84,9 @@ INSERT INTO storage.buckets (id, name, public) VALUES ('yahoo-news', 'yahoo-news
 
 DROP FUNCTION IF EXISTS yahoo_news_latest_mvcc_timestamp;
 CREATE OR REPLACE FUNCTION yahoo_news_latest_mvcc_timestamp()
-RETURNS DECIMAL
+RETURNS TEXT
 LANGUAGE sql STABLE AS $$
-  SELECT max(crdb_internal_mvcc_timestamp)
+  SELECT max(crdb_internal_mvcc_timestamp)::TEXT
   FROM yahoo_news
 $$;
 GRANT EXECUTE ON FUNCTION yahoo_news_latest_mvcc_timestamp TO anon, authenticated, service_role;
