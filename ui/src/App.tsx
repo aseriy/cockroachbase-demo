@@ -98,6 +98,17 @@ export default function App() {
           )}
         </section>
       </main>
+      <footer>
+        <span>Made with CockroachBase</span>
+        <span className="dot">·</span>
+        <span>Running on CockroachDB</span>
+        <span className="dot">·</span>
+        <span>Data from Yahoo Finance</span>
+        <span className="dot">·</span>
+        <a href="https://elbstream.com" target="_blank" rel="noreferrer">
+          Logos provided by Elbstream
+        </a>
+      </footer>
     </div>
   )
 }

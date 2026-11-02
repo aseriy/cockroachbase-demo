@@ -8,9 +8,10 @@ type Row = {
   symbol: string
   name: string | null
   info: { regularMarketPreviousClose?: number } | null
+  logo: string | null
   ticker_price: Bar[]
 }
-type Series = { px: number | null; prev: number | null; hist: number[] }
+type Series = { px: number | null; prev: number | null; hist: number[]; logo: string | null }
 type Flash = { cls: 'flash-up' | 'flash-dn'; n: number }
 
 function hue(sym: string) {
@@ -56,7 +57,7 @@ export default function Watchlist({
 
   async function load() {
     const res = await fetch(
-      `${API_BASE}/rest/v1/ticker?select=symbol,name,info,ticker_price(ts,close)&active=eq.true&order=symbol&ticker_price.order=ts.desc&ticker_price.limit=${POINTS}`,
+      `${API_BASE}/rest/v1/ticker?select=symbol,name,info,logo,ticker_price(ts,close)&active=eq.true&order=symbol&ticker_price.order=ts.desc&ticker_price.limit=${POINTS}`,
       { headers: HEADERS },
     )
     if (!res.ok) return
@@ -68,6 +69,7 @@ export default function Watchlist({
         px: hist.length ? hist[hist.length - 1] : null,
         prev: row.info?.regularMarketPreviousClose ?? null,
         hist,
+        logo: row.logo,
       }
     }
     setRows(data)
@@ -93,6 +95,14 @@ export default function Watchlist({
           [bar.symbol]: { ...cur, px: bar.close, hist: [...cur.hist, bar.close].slice(-POINTS) },
         }))
         setFlash((prev) => ({ ...prev, [bar.symbol]: { cls, n: (prev[bar.symbol]?.n ?? 0) + 1 } }))
+        if (cur.logo === null) {
+          fetch(`${API_BASE}/rest/v1/ticker?select=logo&symbol=eq.${encodeURIComponent(bar.symbol)}`, { headers: HEADERS })
+            .then((res) => (res.ok ? res.json() : []))
+            .then((rows: { logo: string | null }[]) => {
+              const logo = rows[0]?.logo ?? null
+              if (logo !== null) setSeries((prev) => ({ ...prev, [bar.symbol]: { ...prev[bar.symbol], logo } }))
+            })
+        }
       })
       .subscribe()
     return () => {
@@ -130,9 +140,13 @@ export default function Watchlist({
             className={`row ${selected.has(row.symbol) ? 'sel' : ''} ${f?.cls ?? ''}`}
             onClick={() => toggle(row.symbol)}
           >
-            <div className="thumb" style={{ background: `var(--mica-app-series-${hue(row.symbol)}, #502482)` }}>
-              {row.symbol.slice(0, 4)}
-            </div>
+            {s?.logo && s.logo !== '-' ? (
+              <img className="thumb" alt="" src={`data:image/svg+xml,${encodeURIComponent(s.logo)}`} />
+            ) : (
+              <div className="thumb" style={{ background: `var(--mica-app-series-${hue(row.symbol)}, #502482)` }}>
+                {row.symbol.slice(0, 4)}
+              </div>
+            )}
             <div className="rowl">
               <div className="sym">{row.symbol}</div>
               <div className="co">{row.name ?? ''}</div>
