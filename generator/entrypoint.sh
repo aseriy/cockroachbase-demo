@@ -36,6 +36,9 @@ generator_index &
 # Start the ticker news linker in the background
 generator_ticker_news &
 
+# Start the ticker logo fetcher in the background
+generator_ticker_logo &
+
 # Wait for ANY background process to exit or fail
 wait -n
 

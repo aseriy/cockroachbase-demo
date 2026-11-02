@@ -2,7 +2,7 @@ import logging
 
 import click
 
-from .operations import run_extract, run_index, run_messages, run_news, run_quotes, run_ticker, run_ticker_news
+from .operations import run_extract, run_index, run_messages, run_news, run_quotes, run_ticker, run_ticker_logo, run_ticker_news
 
 
 @click.group()
@@ -50,6 +50,12 @@ def index() -> None:
 def ticker_news() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     run_ticker_news({})
+
+
+@cli.command(short_help="Fill ticker logos from Elbstream")
+def ticker_logo() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    run_ticker_logo({})
 
 
 if __name__ == "__main__":

@@ -26,6 +26,7 @@ generator_news = "semgrep_generator.cli:news"
 generator_extract = "semgrep_generator.cli:extract"
 generator_index = "semgrep_generator.cli:index"
 generator_ticker_news = "semgrep_generator.cli:ticker_news"
+generator_ticker_logo = "semgrep_generator.cli:ticker_logo"
 
 [build-system]
 requires = ["poetry-core>=1.9.0"]

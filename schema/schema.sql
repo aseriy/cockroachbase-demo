@@ -52,8 +52,10 @@ CREATE TABLE IF NOT EXISTS ticker (
   exchange char(3) REFERENCES exchange(code),
   name text,
   info jsonb,
+  logo STRING,
   active boolean NOT NULL DEFAULT false
 );
+CREATE INDEX IF NOT EXISTS ticker_logo_missing_idx ON ticker (symbol) WHERE logo IS NULL;
 ALTER TABLE ticker OWNER TO postgres;
 GRANT SELECT ON ticker TO anon, authenticated, service_role;
 GRANT UPDATE ON ticker TO service_role;
