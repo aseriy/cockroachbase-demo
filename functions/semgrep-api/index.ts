@@ -1,4 +1,5 @@
 import { Pool } from 'https://deno.land/x/postgres@v0.17.0/mod.ts'
+import { parse as parseYaml } from 'https://deno.land/std@0.224.0/yaml/parse.ts'
 
 const dbUrl = new URL(Deno.env.get('SUPABASE_DB_URL')!)
 
@@ -51,6 +52,17 @@ async function embed(text: string): Promise<string> {
   return `[${Array.from(embedding as Float32Array).join(',')}]`
 }
 
+// <id>.md is YAML front matter between `---` lines, then the Markdown body.
+function splitFrontMatter(text: string): { front_matter: unknown; body: string } {
+  if (text.startsWith('---\n')) {
+    const end = text.indexOf('\n---\n\n', 4)
+    if (end >= 0) {
+      return { front_matter: parseYaml(text.slice(4, end)), body: text.slice(end + '\n---\n\n'.length) }
+    }
+  }
+  return { front_matter: {}, body: text }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== 'POST') {
     return json({ error: 'method not allowed' }, 405)
@@ -58,10 +70,24 @@ Deno.serve(async (req) => {
 
   let op: unknown
   let text: unknown
+  let id: unknown
   try {
-    ;({ op, text } = await req.json())
+    ;({ op, text, id } = await req.json())
   } catch {
     op = undefined
+  }
+
+  if (op === 'article') {
+    if (typeof id !== 'string' || !id.trim()) {
+      return json({ error: 'id required' }, 400)
+    }
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/yahoo-news/${id}.md`, {
+      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
+    })
+    if (!res.ok) {
+      return json({ error: `storage ${res.status}` }, res.status)
+    }
+    return json(splitFrontMatter(await res.text()))
   }
 
   const conn = await pool.connect()

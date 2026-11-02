@@ -1,164 +1,206 @@
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-}
+  * { box-sizing: border-box; }
+  html, body, #root { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--mica-app-canvas, #F2F1EE);
+    color: var(--mica-app-text, #101913);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app { display: flex; flex-direction: column; height: 100%; }
 
-body {
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 14px;
-  background: #111;
-  color: #ddd;
-}
+  /* ---------- header / search ---------- */
+  header {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 18px;
+    background: var(--mica-app-surface, #F9F8F3);
+    border-bottom: 1px solid var(--mica-app-border, #DEDBD1);
+  }
+  .brand { font-weight: 700; letter-spacing: -0.01em; font-size: 15px; white-space: nowrap; }
+  .brand span { color: var(--mica-app-text-muted, #625F5A); font-weight: 500; }
+  .searchwrap { position: relative; flex: 1 1 auto; max-width: 720px; }
+  .searchwrap svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); opacity: .5; }
+  #q {
+    width: 100%; padding: 9px 34px 9px 34px;
+    font: inherit; color: inherit;
+    background: var(--mica-app-surface-raised, #FFFFFF);
+    border: 1px solid var(--mica-app-border, #DEDBD1);
+    border-radius: 8px;
+    outline: none;
+  }
+  #q:focus { border-color: var(--mica-app-primary, #9059FF); box-shadow: 0 0 0 3px color-mix(in srgb, var(--mica-app-primary, #9059FF) 18%, transparent); }
+  #q::placeholder { color: var(--mica-app-text-muted, #625F5A); opacity: .8; }
+  #clearq {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    border: 0; background: none; cursor: pointer; font-size: 17px; line-height: 1;
+    padding: 4px 7px; border-radius: 6px; color: var(--mica-app-text-muted, #625F5A);
+    display: none;
+  }
+  #clearq:hover { background: var(--mica-app-canvas, #F2F1EE); }
+  .hint { font-size: 12px; color: var(--mica-app-text-muted, #625F5A); white-space: nowrap; }
+  .hint b { font-weight: 600; color: var(--mica-app-text, #101913); }
+  .hint button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--mica-app-link, #6D3FD4); cursor: pointer; padding: 0; margin-left: 10px; }
+  .hint button:hover { text-decoration: underline; }
 
-.shell {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
+  /* ---------- sign in ---------- */
+  .authpanel {
+    flex: 0 0 auto;
+    padding: 10px 18px;
+    background: var(--mica-app-surface, #F9F8F3);
+    border-bottom: 1px solid var(--mica-app-border, #DEDBD1);
+  }
+  .auth { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .field {
+    padding: 7px 10px; font: inherit; color: inherit;
+    background: var(--mica-app-surface-raised, #FFFFFF);
+    border: 1px solid var(--mica-app-border, #DEDBD1);
+    border-radius: 8px; outline: none;
+  }
+  .field:focus { border-color: var(--mica-app-primary, #9059FF); }
+  .auth-actions { display: flex; align-items: baseline; gap: 12px; }
+  .button {
+    font: inherit; cursor: pointer; padding: 7px 14px; border-radius: 8px;
+    border: 1px solid var(--mica-app-primary, #9059FF);
+    background: var(--mica-app-primary, #9059FF); color: var(--mica-app-on-primary, #FFFFFF);
+  }
+  .linkish { font: inherit; font-size: 12px; border: 0; background: none; color: var(--mica-app-link, #6D3FD4); cursor: pointer; padding: 0; }
+  .notice { font-size: 12px; color: var(--mica-app-error, #C5163D); }
 
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 8px 12px;
-  border-bottom: 1px solid #333;
-}
+  /* ---------- layout ---------- */
+  main { flex: 1 1 auto; display: flex; min-height: 0; }
 
-.who {
-  color: #ddd;
-  margin-right: 12px;
-}
+  /* ---------- left rail ---------- */
+  aside {
+    flex: 0 0 360px;
+    border-right: 1px solid var(--mica-app-border, #DEDBD1);
+    background: var(--mica-app-surface, #F9F8F3);
+    overflow-y: auto;
+    padding: 8px 0 20px;
+  }
+  .railhead {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em; font-weight: 600;
+    color: var(--mica-app-text-muted, #625F5A);
+    padding: 8px 16px 6px;
+  }
+  .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; margin: 0 6px; border-radius: 8px;
+    cursor: pointer; border: 1px solid transparent;
+  }
+  .row:hover { background: var(--mica-app-canvas, #F2F1EE); }
+  .row.sel { background: var(--mica-app-surface-raised, #FFFFFF); border-color: var(--mica-app-border, #DEDBD1); }
+  .row.sel .sym { color: var(--mica-app-primary, #9059FF); }
+  .rowl { min-width: 0; flex: 1 1 auto; }
+  .sym { font-weight: 650; font-size: 13px; letter-spacing: .01em; }
+  .co { font-size: 11px; color: var(--mica-app-text-muted, #625F5A); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rowr { text-align: right; flex: 0 0 auto; }
+  .px { font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 550; transition: color .35s; }
+  .chg { font-size: 11px; font-variant-numeric: tabular-nums; }
+  .up { color: var(--mica-app-success, #1F6F4C); }
+  .dn { color: var(--mica-app-error, #C5163D); }
+  .flash-up { animation: fu .7s ease-out; }
+  .flash-dn { animation: fd .7s ease-out; }
+  @keyframes fu { 0% { background: var(--mica-app-success-bg, #EFFAF4); } 100% { background: transparent; } }
+  @keyframes fd { 0% { background: var(--mica-app-error-bg, #FFF1F1); } 100% { background: transparent; } }
+  .spark { display: block; }
+  .allrow { border-bottom: 1px solid var(--mica-app-border, #DEDBD1); border-radius: 8px; margin-bottom: 6px; padding-bottom: 10px; }
+  .count { font-size: 11px; color: var(--mica-app-text-muted, #625F5A); font-variant-numeric: tabular-nums; }
 
-.counts {
-  color: #777;
-}
+  /* ---------- center ---------- */
+  section { flex: 1 1 auto; overflow-y: auto; min-width: 0; }
+  .feedhead {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    padding: 18px 26px 10px;
+  }
+  .feedhead h1 { font-size: 19px; margin: 0; letter-spacing: -0.01em; }
+  .feedhead .sub { font-size: 12.5px; color: var(--mica-app-text-muted, #625F5A); }
+  .scopepill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 600;
+    background: var(--mica-app-info-bg, #DFFBFF); color: var(--mica-app-info, #144F6B);
+    padding: 2px 8px; border-radius: 999px;
+  }
+  .scopepill button { border: 0; background: none; cursor: pointer; color: inherit; font-size: 13px; line-height: 1; padding: 0; opacity: .7; }
+  .scopepill button:hover { opacity: 1; }
 
-.linkish {
-  background: none;
-  border: none;
-  color: #777;
-  font: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
-}
+  .feed { padding: 4px 26px 40px; display: flex; flex-direction: column; gap: 10px; max-width: 860px; }
+  .card {
+    background: var(--mica-app-surface-raised, #FFFFFF);
+    border: 1px solid var(--mica-app-border, #DEDBD1);
+    border-radius: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    display: flex; gap: 14px;
+  }
+  .card:hover { border-color: var(--mica-app-primary, #9059FF); }
+  .thumb {
+    flex: 0 0 56px; height: 56px; border-radius: 8px;
+    display: grid; place-items: center;
+    font-weight: 700; font-size: 15px; letter-spacing: -0.02em;
+    color: var(--mica-app-on-primary, #FFFFFF);
+  }
+  .cardbody { min-width: 0; flex: 1 1 auto; }
+  .meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11.5px; color: var(--mica-app-text-muted, #625F5A); margin-bottom: 3px; }
+  .dot { opacity: .45; }
+  .tick {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
+    border: 1px solid var(--mica-app-border, #DEDBD1);
+    border-radius: 4px; padding: 0 5px;
+    color: var(--mica-app-text, #101913);
+  }
+  .card h2 { font-size: 15px; margin: 0 0 4px; line-height: 1.35; letter-spacing: -0.005em; font-weight: 620; }
+  .excerpt {
+    font-size: 13px; color: var(--mica-app-text-muted, #625F5A); margin: 0;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .why {
+    margin-top: 8px; font-size: 12px;
+    color: var(--mica-app-accent, #144F6B);
+    background: var(--mica-app-info-bg, #DFFBFF);
+    border-radius: 6px; padding: 5px 9px;
+    display: flex; gap: 6px; align-items: baseline;
+  }
+  .why .score { font-variant-numeric: tabular-nums; opacity: .7; margin-left: auto; flex: 0 0 auto; font-size: 11px; }
+  .empty { padding: 40px 26px; color: var(--mica-app-text-muted, #625F5A); max-width: 560px; }
+  .empty h3 { color: var(--mica-app-text, #101913); margin: 0 0 6px; font-size: 15px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+  .chip {
+    font: inherit; font-size: 12px; cursor: pointer;
+    background: var(--mica-app-surface-raised, #FFFFFF);
+    border: 1px solid var(--mica-app-border, #DEDBD1);
+    color: var(--mica-app-link, #6D3FD4);
+    border-radius: 999px; padding: 4px 11px;
+  }
+  .chip:hover { border-color: var(--mica-app-primary, #9059FF); }
 
-.app {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-}
-
-.pane {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 12px;
-}
-
-.left {
-  border-right: 1px solid #333;
-}
-
-.pane-title {
-  color: #777;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-size: 12px;
-}
-
-.feed {
-  flex: 1;
-  overflow: hidden; /* memory window: what doesn't fit falls off the top */
-  display: flex;
-  flex-direction: column-reverse; /* data is newest-first; render newest at the bottom */
-}
-
-.message {
-  padding: 4px 0;
-  border-bottom: 1px solid #222;
-  /* two columns like the search results: meta | message */
-  display: flex;
-  gap: 8px;
-}
-
-.meta {
-  color: #777;
-  flex: 0 0 7em;
-  display: flex;
-  flex-direction: column;
-}
-
-.message .body {
-  flex: 1;
-  min-width: 0; /* full message text, wrapped */
-}
-
-.composer {
-  margin-top: 8px;
-  padding: 8px;
-  background: #1a1a1a;
-  color: #ddd;
-  border: 1px solid #333;
-  outline: none;
-  font: inherit;
-  resize: none;
-}
-
-.results {
-  flex: 1;
-  overflow-y: auto; /* scrollable; the bar appears per browser behavior */
-  margin-top: 8px;
-}
-
-.result {
-  padding: 4px 0;
-  border-bottom: 1px solid #222;
-  /* two columns: distance | message — wrapped lines stay under the message */
-  display: flex;
-  gap: 8px;
-}
-
-.result .body {
-  flex: 1;
-  min-width: 0; /* full message text, wrapped */
-}
-
-.auth {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.field {
-  padding: 8px;
-  background: #1a1a1a;
-  color: #ddd;
-  border: 1px solid #333;
-  outline: none;
-  font: inherit;
-}
-
-.auth-actions {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-}
-
-.button {
-  padding: 6px 16px;
-  background: #1a1a1a;
-  color: #ddd;
-  border: 1px solid #555;
-  font: inherit;
-  cursor: pointer;
-}
-
-.notice {
-  color: #c9a227;
-}
+  /* ---------- article ---------- */
+  article { padding: 18px 26px 60px; max-width: 760px; }
+  .back {
+    border: 0; background: none; font: inherit; font-size: 13px; cursor: pointer;
+    color: var(--mica-app-link, #6D3FD4); padding: 4px 0; margin-bottom: 10px;
+  }
+  .back:hover { text-decoration: underline; }
+  article h1 { font-size: 25px; line-height: 1.22; margin: 6px 0 10px; letter-spacing: -0.02em; }
+  .amet { font-size: 12.5px; color: var(--mica-app-text-muted, #625F5A); display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+  .abody { font-size: 15px; line-height: 1.65; }
+  .abody p { margin: 0 0 14px; }
+  .abody h3 { font-size: 15.5px; margin: 24px 0 8px; }
+  .abody table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin: 6px 0 18px; font-variant-numeric: tabular-nums; }
+  .abody th, .abody td { border-bottom: 1px solid var(--mica-app-border, #DEDBD1); padding: 5px 8px; text-align: right; }
+  .abody th:first-child, .abody td:first-child { text-align: left; }
+  .abody th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--mica-app-text-muted, #625F5A); font-weight: 600; }
+  mark { background: color-mix(in srgb, var(--mica-app-primary, #9059FF) 22%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+  .srcline { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--mica-app-border, #DEDBD1); font-size: 12.5px; color: var(--mica-app-text-muted, #625F5A); }
+  .srcline button { font: inherit; font-size: 12.5px; border: 0; background: none; color: var(--mica-app-link, #6D3FD4); cursor: pointer; padding: 0; }
+  .srcline button:hover { text-decoration: underline; }
+  .err {
+    margin: 12px 26px; padding: 10px 14px; border-radius: 8px;
+    background: var(--mica-app-error-bg, #FFF1F1); color: var(--mica-app-error, #C5163D);
+    border: 1px solid currentColor; font-size: 13px; display: none;
+  }
+  @media (max-width: 720px) {
+    aside { flex-basis: 150px; }
+    .co, .spark { display: none; }
+  }
