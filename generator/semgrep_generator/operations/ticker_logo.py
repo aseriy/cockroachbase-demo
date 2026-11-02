@@ -14,12 +14,18 @@ CHANNEL = "ticker"
 CONNECTION_CHECK_SECONDS = 30
 CONNECTION_FAILED_CHECKS = 3
 RESTART_SECONDS = 5
+BACKFILL_ROWS = 1000
+PROCESS_ATTEMPTS = 3
 LOGO_URL = "https://api.elbstream.com/logos/symbol/"
 NO_LOGO = "-"
 
 
-async def _tickers_missing_logo(client: AsyncClient) -> list[str]:
-    rows = (await client.table("ticker").select("symbol").is_("logo", "null").execute()).data
+async def _cutoff(client: AsyncClient) -> str:
+    return (await client.rpc("ticker_latest_mvcc_timestamp").execute()).data
+
+
+async def _rows(client: AsyncClient, cutoff: str) -> list[str]:
+    rows = (await client.table("ticker").select("symbol").is_("logo", "null").lte("crdb_internal_mvcc_timestamp", cutoff).limit(BACKFILL_ROWS).execute()).data
     return [row["symbol"] for row in rows]
 
 
@@ -36,27 +42,42 @@ async def _update_ticker(client: AsyncClient, symbol: str, logo: str) -> None:
     await client.table("ticker").update({"logo": logo}).eq("symbol", symbol).execute()
 
 
-async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> None:
+async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> bool:
     async with lock:
         try:
             logo = await asyncio.to_thread(_fetch_logo, symbol)
             await _update_ticker(client, symbol, logo)
             logger.info(f"{symbol}: {'no logo' if logo == NO_LOGO else 'logo'}")
+            return True
         except Exception as error:
             logger.error(f"{symbol}: {error}")
+            return False
 
 
 async def _backfill(client: AsyncClient, lock: asyncio.Lock) -> None:
     try:
-        symbols = await _tickers_missing_logo(client)
+        cutoff = await _cutoff(client)
     except Exception as error:
-        logger.error(f"tickers missing logo: {error}")
-        symbols = []
+        logger.error(f"ticker: {error}")
+        return
 
-    logger.info(f"tickers missing logo: {len(symbols)}")
+    while True:
+        try:
+            symbols = await _rows(client, cutoff)
+        except Exception as error:
+            logger.error(f"ticker: {error}")
+            return
 
-    for symbol in symbols:
-        await _fill(client, lock, symbol)
+        if not symbols:
+            return
+
+        logger.info(f"tickers missing logo: {len(symbols)}")
+
+        for symbol in symbols:
+            for attempt in range(PROCESS_ATTEMPTS):
+                if await _fill(client, lock, symbol):
+                    break
+                await asyncio.sleep(attempt + 1)
 
 
 async def _serve(client: AsyncClient) -> None:

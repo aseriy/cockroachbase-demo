@@ -60,6 +60,16 @@ ALTER TABLE ticker OWNER TO postgres;
 GRANT SELECT ON ticker TO anon, authenticated, service_role;
 GRANT UPDATE ON ticker TO service_role;
 
+DROP FUNCTION IF EXISTS ticker_latest_mvcc_timestamp;
+CREATE OR REPLACE FUNCTION ticker_latest_mvcc_timestamp()
+RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+  SELECT max(crdb_internal_mvcc_timestamp)::TEXT
+  FROM ticker
+$$;
+GRANT EXECUTE ON FUNCTION ticker_latest_mvcc_timestamp TO anon, authenticated, service_role;
+
+
 CREATE TABLE IF NOT EXISTS ticker_price (
   symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
   ts timestamptz NOT NULL,

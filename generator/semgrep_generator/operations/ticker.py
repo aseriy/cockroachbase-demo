@@ -13,11 +13,17 @@ CHANNEL = "ticker"
 CONNECTION_CHECK_SECONDS = 30
 CONNECTION_FAILED_CHECKS = 3
 RESTART_SECONDS = 5
+BACKFILL_ROWS = 1000
+PROCESS_ATTEMPTS = 3
 
 
-async def _tickers_missing_info(client: AsyncClient) -> list[str]:
-    rows = (await client.table("ticker").select("symbol, exchange, name, info").execute()).data
-    return [row["symbol"] for row in rows if row["exchange"] is None or row["name"] is None or row["info"] is None]
+async def _cutoff(client: AsyncClient) -> str:
+    return (await client.rpc("ticker_latest_mvcc_timestamp").execute()).data
+
+
+async def _rows(client: AsyncClient, cutoff: str) -> list[str]:
+    rows = (await client.table("ticker").select("symbol").or_("exchange.is.null,name.is.null,info.is.null").lte("crdb_internal_mvcc_timestamp", cutoff).limit(BACKFILL_ROWS).execute()).data
+    return [row["symbol"] for row in rows]
 
 
 def _fetch_info(symbol: str) -> dict:
@@ -28,27 +34,42 @@ async def _update_ticker(client: AsyncClient, symbol: str, info: dict) -> None:
     await client.table("ticker").update({"exchange": info["exchange"], "name": info["longName"], "info": info}).eq("symbol", symbol).execute()
 
 
-async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> None:
+async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> bool:
     async with lock:
         try:
             info = await asyncio.to_thread(_fetch_info, symbol)
             await _update_ticker(client, symbol, info)
             logger.info(f"{symbol}: {info['exchange']} {info['longName']}")
+            return True
         except Exception as error:
             logger.error(f"{symbol}: {error}")
+            return False
 
 
 async def _backfill(client: AsyncClient, lock: asyncio.Lock) -> None:
     try:
-        symbols = await _tickers_missing_info(client)
+        cutoff = await _cutoff(client)
     except Exception as error:
-        logger.error(f"tickers missing info: {error}")
-        symbols = []
+        logger.error(f"ticker: {error}")
+        return
 
-    logger.info(f"tickers missing info: {len(symbols)}")
+    while True:
+        try:
+            symbols = await _rows(client, cutoff)
+        except Exception as error:
+            logger.error(f"ticker: {error}")
+            return
 
-    for symbol in symbols:
-        await _fill(client, lock, symbol)
+        if not symbols:
+            return
+
+        logger.info(f"tickers missing info: {len(symbols)}")
+
+        for symbol in symbols:
+            for attempt in range(PROCESS_ATTEMPTS):
+                if await _fill(client, lock, symbol):
+                    break
+                await asyncio.sleep(attempt + 1)
 
 
 async def _serve(client: AsyncClient) -> None:

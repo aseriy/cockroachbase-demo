@@ -212,13 +212,13 @@ Your only job is in the status callback: `CHANNEL_ERROR` or `CLOSED` means you a
 
 ### Company logos
 
-Each news card and each watchlist row shows the company's logo. The logo comes from the Elbstream Logo API. The API needs no key. One URL serves one symbol, and the default response is an SVG:
+Each watchlist row shows the company's logo. The logo comes from the Elbstream Logo API. The API needs no key. One URL serves one symbol, and the default response is an SVG:
 
 ```
 https://api.elbstream.com/logos/symbol/NVDA
 ```
 
-The page never calls that URL. `generator_ticker` fetches the logo when it fills in `ticker.info` for a symbol, and stores the SVG text in `ticker.logo`. The page reads the logo from the ticker row it already loads.
+The page never calls that URL. `generator_ticker_logo` fetches the logo for each symbol in `ticker`, and stores the SVG text in `ticker.logo`. The page reads the logo from the ticker row it already loads.
 
 The logos are stored rather than loaded from Elbstream on each view because browsers cannot cache the API's response. The response sets a lifetime for shared caches only, `s-maxage`, and nothing for the browser. A page that loaded logos from Elbstream directly would fetch every logo again on every view. Storing them costs one fetch per symbol.
 
