@@ -15,9 +15,6 @@ sed -i \
 # Start the web server in the background
 nginx -g 'daemon off;' &
 
-# Start the message generator in the background
-generator_messages &
-
 # Start the quotes generator in the background
 generator_quotes &
 
