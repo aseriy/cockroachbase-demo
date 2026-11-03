@@ -3,6 +3,8 @@ import logging
 
 from realtime import RealtimeSubscribeStates
 from supabase import AsyncClient
+from yfinance._http import HTTPError
+from yfinance.config import YfConfig
 
 from .common import get_async_client
 from .extract import _cutoff
@@ -15,6 +17,8 @@ CONNECTION_CHECK_SECONDS = 30
 CONNECTION_FAILED_CHECKS = 3
 RESTART_SECONDS = 5
 BACKFILL_ROWS = 1000
+
+YfConfig.debug.hide_exceptions = False
 
 
 async def _rows(client: AsyncClient, cutoff: str) -> list[dict]:
@@ -29,29 +33,51 @@ async def _exchange_exists(client: AsyncClient, code: str) -> bool:
     return bool((await client.table("exchange").select("code").eq("code", code).execute()).data)
 
 
+async def _unresolved(client: AsyncClient, symbol: str) -> bool:
+    return bool((await client.table("ticker_unresolved").select("symbol").eq("symbol", symbol).execute()).data)
+
+
 async def _insert_exchange(client: AsyncClient, info: dict) -> None:
     await client.table("exchange").insert({"code": info["exchange"], "name": info["fullExchangeName"], "tz": info["exchangeTimezoneName"]}).execute()
 
 
 async def _insert_ticker(client: AsyncClient, symbol: str, info: dict) -> None:
-    await client.table("ticker").insert({"symbol": symbol, "exchange": info["exchange"], "name": info["longName"], "info": info}).execute()
+    await client.table("ticker").insert({"symbol": symbol, "exchange": info["exchange"], "name": info.get("longName", info.get("shortName")), "info": info}).execute()
 
 
-async def _ensure_ticker(client: AsyncClient, symbol: str) -> None:
+async def _insert_unresolved(client: AsyncClient, symbol: str) -> None:
+    await client.table("ticker_unresolved").insert({"symbol": symbol}).execute()
+
+
+async def _ensure_ticker(client: AsyncClient, symbol: str) -> bool:
     if await _ticker_exists(client, symbol):
-        return
+        return True
 
-    info = await asyncio.to_thread(_fetch_info, symbol)
+    if await _unresolved(client, symbol):
+        return False
+
+    try:
+        info = await asyncio.to_thread(_fetch_info, symbol)
+    except HTTPError as error:
+        if error.response.status_code != 404:
+            raise
+        info = {}
+
+    if "exchange" not in info:
+        await _insert_unresolved(client, symbol)
+        logger.info(f"{symbol}: unresolved")
+        return False
 
     if not await _exchange_exists(client, info["exchange"]):
         await _insert_exchange(client, info)
 
     await _insert_ticker(client, symbol, info)
+    return True
 
 
 async def _upsert_ticker_news(client: AsyncClient, id: str, symbols: list[str]) -> None:
-    if symbols:
-        await client.table("ticker_news").upsert([{"news_id": id, "symbol": symbol} for symbol in symbols], on_conflict="news_id,symbol", ignore_duplicates=True).execute()
+    rows = [{"news_id": id, "symbol": symbol} for symbol in symbols] if symbols else [{"news_id": id, "symbol": None}]
+    await client.table("ticker_news").upsert(rows, on_conflict="news_id,symbol", ignore_duplicates=True).execute()
 
 
 async def _process(client: AsyncClient, lock: asyncio.Lock, record: dict) -> None:
@@ -59,10 +85,12 @@ async def _process(client: AsyncClient, lock: asyncio.Lock, record: dict) -> Non
         try:
             id = record["id"]
             symbols = record["publication"].get("relatedTickers") or []
+            resolved = []
             for symbol in symbols:
-                await _ensure_ticker(client, symbol)
-            await _upsert_ticker_news(client, id, symbols)
-            logger.info(f"{id}: {len(symbols)} tickers")
+                if await _ensure_ticker(client, symbol):
+                    resolved.append(symbol)
+            await _upsert_ticker_news(client, id, resolved)
+            logger.info(f"{id}: {len(resolved)} tickers")
         except Exception as error:
             logger.error(f"{record.get('id')}: {error}")
 

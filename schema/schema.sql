@@ -48,7 +48,7 @@ ALTER TABLE exchange ALTER COLUMN open SET DEFAULT '00:00';
 ALTER TABLE exchange ALTER COLUMN close SET DEFAULT '23:59';
 
 CREATE TABLE IF NOT EXISTS ticker (
-  symbol varchar(14) PRIMARY KEY,
+  symbol varchar(21) PRIMARY KEY,
   exchange char(3) REFERENCES exchange(code),
   name text,
   info jsonb,
@@ -71,7 +71,7 @@ GRANT EXECUTE ON FUNCTION ticker_latest_mvcc_timestamp TO anon, authenticated, s
 
 
 CREATE TABLE IF NOT EXISTS ticker_price (
-  symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
+  symbol varchar(21) NOT NULL REFERENCES ticker(symbol),
   ts timestamptz NOT NULL,
   open float8 NOT NULL,
   high float8 NOT NULL,
@@ -118,22 +118,22 @@ GRANT SELECT ON yahoo_news_index TO anon, authenticated, service_role;
 GRANT INSERT, UPDATE, DELETE ON yahoo_news_index TO service_role;
 
 CREATE TABLE IF NOT EXISTS ticker_news (
-  news_id uuid NOT NULL REFERENCES yahoo_news(id),
-  symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
-  PRIMARY KEY (news_id, symbol),
-  INDEX ticker_news_symbol_idx (symbol)
+    news_id UUID NOT NULL,
+    symbol VARCHAR(21) NULL,
+    id UUID NOT NULL DEFAULT gen_random_uuid(),
+    CONSTRAINT ticker_news_pkey PRIMARY KEY (id ASC),
+    CONSTRAINT ticker_news_news_id_fkey FOREIGN KEY (news_id) REFERENCES public.yahoo_news(id),
+    CONSTRAINT ticker_news_symbol_fkey FOREIGN KEY (symbol) REFERENCES public.ticker(symbol),
+    INDEX ticker_news_symbol_idx (symbol ASC),
+    UNIQUE INDEX ticker_news_news_id_symbol_key (news_id ASC, symbol ASC)
 );
 ALTER TABLE ticker_news OWNER TO postgres;
 GRANT SELECT ON ticker_news TO anon, authenticated, service_role;
 GRANT INSERT, DELETE ON ticker_news TO service_role;
 
-
-CREATE TABLE IF NOT EXISTS ticker_news (
-  news_id uuid NOT NULL REFERENCES yahoo_news(id),
-  symbol varchar(14) NOT NULL REFERENCES ticker(symbol),
-  PRIMARY KEY (news_id, symbol),
-  INDEX ticker_news_symbol_idx (symbol)
+CREATE TABLE IF NOT EXISTS ticker_unresolved (
+    symbol text PRIMARY KEY
 );
-ALTER TABLE ticker_news OWNER TO postgres;
-GRANT SELECT ON ticker_news TO anon, authenticated, service_role;
-GRANT INSERT, DELETE ON ticker_news TO service_role;
+ALTER TABLE ticker_unresolved OWNER TO postgres;
+GRANT SELECT ON ticker_unresolved TO anon, authenticated, service_role;
+GRANT INSERT ON ticker_unresolved TO service_role;

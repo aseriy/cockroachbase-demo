@@ -22,7 +22,7 @@ async def _cutoff(client: AsyncClient) -> str:
 
 
 async def _rows(client: AsyncClient, cutoff: str) -> list[str]:
-    rows = (await client.table("ticker").select("symbol").or_("exchange.is.null,name.is.null,info.is.null").lte("crdb_internal_mvcc_timestamp", cutoff).limit(BACKFILL_ROWS).execute()).data
+    rows = (await client.table("ticker").select("symbol").is_("info", "null").lte("crdb_internal_mvcc_timestamp", cutoff).limit(BACKFILL_ROWS).execute()).data
     return [row["symbol"] for row in rows]
 
 
@@ -31,7 +31,7 @@ def _fetch_info(symbol: str) -> dict:
 
 
 async def _update_ticker(client: AsyncClient, symbol: str, info: dict) -> None:
-    await client.table("ticker").update({"exchange": info["exchange"], "name": info["longName"], "info": info}).eq("symbol", symbol).execute()
+    await client.table("ticker").update({"exchange": info["exchange"], "name": info.get("longName", info.get("shortName")), "info": info}).eq("symbol", symbol).execute()
 
 
 async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> bool:
@@ -39,7 +39,7 @@ async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> bool:
         try:
             info = await asyncio.to_thread(_fetch_info, symbol)
             await _update_ticker(client, symbol, info)
-            logger.info(f"{symbol}: {info['exchange']} {info['longName']}")
+            logger.info(f"{symbol}: {info['exchange']} {info.get('longName', info.get('shortName'))}")
             return True
         except Exception as error:
             logger.error(f"{symbol}: {error}")
@@ -80,7 +80,7 @@ async def _serve(client: AsyncClient) -> None:
         record = payload["data"]["record"]
         symbol = record["symbol"]
         logger.info(f"{symbol}: inserted")
-        if record["exchange"] is None or record["name"] is None or record["info"] is None:
+        if record["info"] is None:
             asyncio.create_task(_fill(client, lock, symbol))
 
     def on_status(status: RealtimeSubscribeStates, error) -> None:
