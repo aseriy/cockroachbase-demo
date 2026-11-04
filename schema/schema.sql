@@ -110,3 +110,26 @@ CREATE TABLE IF NOT EXISTS ticker_unresolved (
 ALTER TABLE ticker_unresolved OWNER TO postgres;
 GRANT SELECT ON ticker_unresolved TO anon, authenticated, service_role;
 GRANT INSERT ON ticker_unresolved TO service_role;
+
+
+DROP FUNCTION IF EXISTS yahoo_news_search;
+CREATE OR REPLACE FUNCTION yahoo_news_search(query_vector VECTOR(1536), max_docs INT8, max_distance FLOAT8, chunk_factor INT8)
+RETURNS TABLE(id uuid, publication jsonb, distance float8)
+LANGUAGE sql STABLE AS $$
+  SELECT n.id, n.publication, c.distance
+  FROM (
+    SELECT doc_id, min(chunk_distance) AS distance
+    FROM (
+      SELECT doc_id, (embedding <=> query_vector)::float8 AS chunk_distance
+      FROM yahoo_news_index
+      ORDER BY embedding <=> query_vector
+      LIMIT max_docs * chunk_factor
+    ) AS nearest
+    GROUP BY doc_id
+  ) AS c
+  JOIN yahoo_news n ON n.id = c.doc_id
+  WHERE c.distance <= max_distance
+  ORDER BY c.distance
+  LIMIT max_docs
+$$;
+GRANT EXECUTE ON FUNCTION yahoo_news_search TO anon, authenticated, service_role;

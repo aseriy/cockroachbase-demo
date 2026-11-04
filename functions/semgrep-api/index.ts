@@ -4,6 +4,9 @@ import { parse as parseYaml } from 'https://deno.land/std@0.224.0/yaml/parse.ts'
 
 const openai = new OpenAI({ apiKey: Deno.env.get('OPENAI_API_KEY') })
 
+// Nearest chunks fetched per requested article; the corpus averages 1.61 chunks per article.
+const CHUNK_FACTOR = 2
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -35,8 +38,11 @@ export default {
 
     let op: unknown
     let id: unknown
+    let text: unknown
+    let max_docs: unknown
+    let max_distance: unknown
     try {
-      ;({ op, id } = await req.json())
+      ;({ op, id, text, max_docs, max_distance } = await req.json())
     } catch {
       op = undefined
     }
@@ -50,6 +56,28 @@ export default {
         return json({ error: `storage ${error.status ?? 500}` }, error.status ?? 500)
       }
       return json(splitFrontMatter(await data.text()))
+    }
+
+    if (op === 'search') {
+      if (typeof text !== 'string' || !text.trim()) {
+        return json({ error: 'text required' }, 400)
+      }
+      const docs = max_docs ?? 50
+      const distance = max_distance ?? 1.0
+      if (typeof docs !== 'number' || typeof distance !== 'number') {
+        return json({ error: 'max_docs and max_distance must be numbers' }, 400)
+      }
+      const query_vector = await embed(text.trim())
+      const { data, error } = await ctx.supabaseAdmin.rpc('yahoo_news_search', {
+        query_vector,
+        max_docs: docs,
+        max_distance: distance,
+        chunk_factor: CHUNK_FACTOR,
+      })
+      if (error) {
+        return json({ error: error.message }, 500)
+      }
+      return json(data)
     }
 
     return json({ error: 'unknown op' }, 400)
