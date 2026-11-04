@@ -22,6 +22,10 @@ export default function App() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [article, setArticle] = useState<Story | null>(null)
   const [query, setQuery] = useState('')
+  const [submitted, setSubmitted] = useState('')
+  const [bound, setBound] = useState<'topk' | 'distance'>('topk')
+  const [topK, setTopK] = useState(20)
+  const [maxDistance, setMaxDistance] = useState(0.215)
   const [tickers, setTickers] = useState(0)
   const [stories, setStories] = useState(0)
 
@@ -38,6 +42,17 @@ export default function App() {
   function select(symbols: Set<string>) {
     setSelected(symbols)
     setArticle(null)
+  }
+
+  function search(text: string) {
+    setQuery(text)
+    setSubmitted(text.trim())
+    setArticle(null)
+  }
+
+  function clearSearch() {
+    setQuery('')
+    setSubmitted('')
   }
 
   const who = session
@@ -62,14 +77,43 @@ export default function App() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setQuery('')
+              if (e.key === 'Enter') search(query)
+              if (e.key === 'Escape') clearSearch()
             }}
           />
           {query && (
-            <button id="clearq" title="Clear" style={{ display: 'block' }} onClick={() => setQuery('')}>
+            <button id="clearq" title="Clear" style={{ display: 'block' }} onClick={clearSearch}>
               &times;
             </button>
           )}
+        </div>
+        <div className="searchopts">
+          <label>top-k</label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={topK}
+            disabled={bound !== 'topk'}
+            onChange={(e) => setTopK(Number(e.target.value))}
+          />
+          <button
+            className="switch"
+            role="switch"
+            aria-checked={bound === 'distance'}
+            title={bound === 'topk' ? 'Bound by top-k' : 'Bound by distance'}
+            onClick={() => setBound(bound === 'topk' ? 'distance' : 'topk')}
+          />
+          <input
+            type="number"
+            min={0}
+            max={1}
+            step={0.005}
+            value={maxDistance}
+            disabled={bound !== 'distance'}
+            onChange={(e) => setMaxDistance(Number(e.target.value))}
+          />
+          <label>distance</label>
         </div>
         <div className="hint">
           <b>{tickers}</b> tickers · <b>{stories}</b> stories
@@ -92,9 +136,18 @@ export default function App() {
         <Watchlist selected={selected} onSelect={select} onCount={setTickers} stories={stories} />
         <section id="center">
           {article ? (
-            <Article story={article} onBack={() => setArticle(null)} />
+            <Article story={article} searching={submitted !== ''} onBack={() => setArticle(null)} />
           ) : (
-            <Feed selected={selected} onOpen={setArticle} onTag={(s) => select(new Set([s]))} onCount={setStories} />
+            <Feed
+              selected={selected}
+              query={submitted}
+              bound={bound}
+              boundValue={bound === 'topk' ? topK : maxDistance}
+              onOpen={setArticle}
+              onTag={(s) => select(new Set([s]))}
+              onSuggest={search}
+              onCount={setStories}
+            />
           )}
         </section>
       </main>

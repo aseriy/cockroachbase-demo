@@ -8,7 +8,7 @@ import type { Story } from './App'
 type FrontMatter = { title?: string; author?: string; date?: string; 'source-hostname'?: string }
 type Doc = { front_matter: FrontMatter; body: string }
 
-export default function Article({ story, onBack }: { story: Story; onBack: () => void }) {
+export default function Article({ story, searching, onBack }: { story: Story; searching: boolean; onBack: () => void }) {
   const [doc, setDoc] = useState<Doc | null>(null)
   const [error, setError] = useState('')
 
@@ -37,7 +37,7 @@ export default function Article({ story, onBack }: { story: Story; onBack: () =>
   return (
     <article>
       <button className="back" onClick={onBack}>
-        &larr; Back to feed
+        &larr; {searching ? 'Back to results' : 'Back to feed'}
       </button>
       <div className="meta">
         {(p.relatedTickers ?? []).map((t) => (

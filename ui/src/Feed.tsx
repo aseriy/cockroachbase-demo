@@ -13,15 +13,25 @@ export function fmtDate(seconds: number) {
   return dt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
+const SUGGESTIONS = ['supply problems', 'who beat on margin', 'cheap on valuation', 'AI spending']
+
 export default function Feed({
   selected,
+  query,
+  bound,
+  boundValue,
   onOpen,
   onTag,
+  onSuggest,
   onCount,
 }: {
   selected: Set<string>
+  query: string
+  bound: 'topk' | 'distance'
+  boundValue: number
   onOpen: (story: Story) => void
   onTag: (symbol: string) => void
+  onSuggest: (text: string) => void
   onCount: (n: number) => void
 }) {
   const [stories, setStories] = useState<Story[]>([])
@@ -31,10 +41,19 @@ export default function Feed({
   useEffect(() => {
     let stale = false
     async function load() {
-      const url = symbols.length
-        ? `${API_BASE}/rest/v1/yahoo_news?select=id,publication,ticker_news!inner(symbol)&ticker_news.symbol=${encodeURIComponent(`in.(${symbols.map((s) => `"${s}"`).join(',')})`)}&limit=${STORIES}`
-        : `${API_BASE}/rest/v1/yahoo_news?select=id,publication&limit=${STORIES}`
-      const res = await fetch(url, { headers: HEADERS })
+      let res: Response
+      if (query) {
+        res = await fetch(`${API_BASE}/functions/v1/semgrep-api`, {
+          method: 'POST',
+          headers: { ...HEADERS, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ op: 'search', text: query, [bound === 'topk' ? 'max_docs' : 'max_distance']: boundValue }),
+        })
+      } else {
+        const url = symbols.length
+          ? `${API_BASE}/rest/v1/yahoo_news?select=id,publication,ticker_news!inner(symbol)&ticker_news.symbol=${encodeURIComponent(`in.(${symbols.map((s) => `"${s}"`).join(',')})`)}&limit=${STORIES}`
+          : `${API_BASE}/rest/v1/yahoo_news?select=id,publication&limit=${STORIES}`
+        res = await fetch(url, { headers: HEADERS })
+      }
       if (!res.ok || stale) return
       const rows: Story[] = await res.json()
       setStories(rows)
@@ -44,17 +63,31 @@ export default function Feed({
     return () => {
       stale = true
     }
-  }, [scope])
+  }, [scope, query, bound, boundValue])
 
   return (
     <>
       <div className="feedhead">
-        <h1>Latest</h1>
+        <h1>{query ? 'Results' : 'Latest'}</h1>
         <span className="sub">
-          {stories.length} {stories.length === 1 ? 'story' : 'stories'}
+          {stories.length} {stories.length === 1 ? 'story' : 'stories'} {query ? 'ranked by meaning' : 'newest first'}
         </span>
       </div>
-      {stories.length === 0 ? (
+      {stories.length === 0 && query ? (
+        <div className="empty">
+          <h3>Nothing matched</h3>
+          <div>
+            No stories for <b>{query}</b>. Try a broader idea — the index matches on meaning, not exact words.
+          </div>
+          <div className="chips">
+            {SUGGESTIONS.map((s) => (
+              <button className="chip" key={s} onClick={() => onSuggest(s)}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : stories.length === 0 ? (
         <div className="empty">
           <h3>Nothing here</h3>
           <div>No stories for <b>{scope || 'all tickers'}</b>.</div>
