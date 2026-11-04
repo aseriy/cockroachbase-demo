@@ -1,44 +1,8 @@
-import { Pool } from 'https://deno.land/x/postgres@v0.17.0/mod.ts'
+import { withSupabase } from 'npm:@supabase/server@1'
+import OpenAI from 'https://deno.land/x/openai@v4.24.0/mod.ts'
 import { parse as parseYaml } from 'https://deno.land/std@0.224.0/yaml/parse.ts'
 
-const dbUrl = new URL(Deno.env.get('SUPABASE_DB_URL')!)
-
-const pool = new Pool(
-  {
-    tls: { caCertificates: [Deno.env.get('SUPABASE_DB_SSL_ROOT_CERT')!] },
-    database: dbUrl.pathname.slice(1),
-    hostname: dbUrl.hostname,
-    user: dbUrl.username,
-    port: Number(dbUrl.port || '5432'),
-    password: Deno.env.get('DB_PASSWORD'),
-  },
-  1,
-)
-
-const session = new Supabase.ai.Session('gte-small')
-
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
-const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-
-type Caller = { kind: 'service' } | { kind: 'user'; id: string; name: string } | null
-
-async function identify(req: Request): Promise<Caller> {
-  const auth = req.headers.get('Authorization') ?? ''
-  if (!auth.startsWith('Bearer ')) return null
-  const token = auth.slice('Bearer '.length)
-
-  if (token === SERVICE_KEY) return { kind: 'service' }
-
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${token}` },
-  })
-  if (!res.ok) return null
-  const user = await res.json()
-  if (!user?.id) return null
-  const name = user.user_metadata?.display_name ?? 'unknown'
-  return { kind: 'user', id: user.id, name }
-}
+const openai = new OpenAI({ apiKey: Deno.env.get('OPENAI_API_KEY') })
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -48,8 +12,8 @@ function json(body: unknown, status = 200): Response {
 }
 
 async function embed(text: string): Promise<string> {
-  const embedding = await session.run(text, { mean_pool: true, normalize: true })
-  return `[${Array.from(embedding as Float32Array).join(',')}]`
+  const result = await openai.embeddings.create({ model: 'text-embedding-ada-002', input: text })
+  return `[${result.data[0].embedding.join(',')}]`
 }
 
 // <id>.md is YAML front matter between `---` lines, then the Markdown body.
@@ -63,89 +27,31 @@ function splitFrontMatter(text: string): { front_matter: unknown; body: string }
   return { front_matter: {}, body: text }
 }
 
-Deno.serve(async (req) => {
-  if (req.method !== 'POST') {
-    return json({ error: 'method not allowed' }, 405)
-  }
-
-  let op: unknown
-  let text: unknown
-  let id: unknown
-  try {
-    ;({ op, text, id } = await req.json())
-  } catch {
-    op = undefined
-  }
-
-  if (op === 'article') {
-    if (typeof id !== 'string' || !id.trim()) {
-      return json({ error: 'id required' }, 400)
-    }
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/yahoo-news/${id}.md`, {
-      headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
-    })
-    if (!res.ok) {
-      return json({ error: `storage ${res.status}` }, res.status)
-    }
-    return json(splitFrontMatter(await res.text()))
-  }
-
-  const conn = await pool.connect()
-  try {
-    if (op === 'stats') {
-      const result = await conn.queryObject`
-        select
-          (select count(*) from messages) as messages,
-          (select count(distinct user_id) from auth.sessions
-             where not_after is null or not_after > now()) as online
-      `
-      const row = result.rows[0] as Record<string, unknown>
-      return json({ messages: Number(row.messages), online: Number(row.online) })
+export default {
+  fetch: withSupabase({ auth: 'none' }, async (req, ctx) => {
+    if (req.method !== 'POST') {
+      return json({ error: 'method not allowed' }, 405)
     }
 
-    const caller = await identify(req)
-    if (!caller) {
-      return json({ error: 'sign in required' }, 401)
+    let op: unknown
+    let id: unknown
+    try {
+      ;({ op, id } = await req.json())
+    } catch {
+      op = undefined
     }
 
-    if (typeof text !== 'string' || !text.trim()) {
-      return json({ error: 'text required' }, 400)
-    }
-    const input = text.trim()
-    const vector = await embed(input)
-
-    if (op === 'search') {
-      if (caller.kind !== 'user') {
-        return json({ error: 'sign in required' }, 401)
+    if (op === 'article') {
+      if (typeof id !== 'string' || !id.trim()) {
+        return json({ error: 'id required' }, 400)
       }
-      const result = await conn.queryObject`
-        select * from search_messages(${vector}::vector)
-      `
-      // the driver hands float8 over as a string
-      const rows = (result.rows as Record<string, unknown>[]).map((r) => ({
-        ...r,
-        distance: Number(r.distance),
-      }))
-      return json(rows)
+      const { data, error } = await ctx.supabaseAdmin.storage.from('yahoo-news').download(`${id}.md`)
+      if (error) {
+        return json({ error: `storage ${error.status ?? 500}` }, error.status ?? 500)
+      }
+      return json(splitFrontMatter(await data.text()))
     }
 
-    if (caller.kind === 'user') {
-      const result = await conn.queryObject`
-        insert into messages (body, body_vector, user_id, author)
-        values (${input}, ${vector}::vector, ${caller.id}, ${caller.name})
-        returning id, body, author, created_at
-      `
-      return json(result.rows[0])
-    }
-
-    // service caller: the generator — no attribution
-    const result = await conn.queryObject`
-      insert into messages (body, body_vector)
-      values (${input}, ${vector}::vector)
-      returning id, body, created_at
-    `
-    return json(result.rows[0])
-  } finally {
-    conn.release()
-  }
-})
+    return json({ error: 'unknown op' }, 400)
+  }),
+}

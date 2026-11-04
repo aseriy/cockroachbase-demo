@@ -3,6 +3,7 @@ import logging
 
 from llama_index.core import Document, VectorStoreIndex
 from llama_index.core.node_parser import SentenceSplitter
+from llama_index.embeddings.openai import OpenAIEmbedding
 from realtime import RealtimeSubscribeStates
 from supabase import AsyncClient
 
@@ -12,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 CHANNEL = "yahoo_news"
 BUCKET = "yahoo-news"
+EMBED_MODEL = "text-embedding-ada-002"
 CONNECTION_CHECK_SECONDS = 30
 CONNECTION_FAILED_CHECKS = 3
 RESTART_SECONDS = 5
@@ -28,7 +30,7 @@ def _strip_front_matter(text: str) -> tuple[str, int]:
 
 def _index(text: str) -> dict:
     documents = [Document(text=text)]
-    index = VectorStoreIndex.from_documents(documents, transformations=[SentenceSplitter(chunk_size=1024)])
+    index = VectorStoreIndex.from_documents(documents, embed_model=OpenAIEmbedding(model=EMBED_MODEL), transformations=[SentenceSplitter(chunk_size=1024)])
     return index.storage_context.to_dict()
 
 

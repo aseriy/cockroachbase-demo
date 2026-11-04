@@ -35,10 +35,10 @@ The rule throughout: source lives in real files (`.ts`, `.tsx`, `.sql`). Bundles
 - A running Supabase-on-CockroachDB stack managed by the [supabase-kubernetes](https://github.com/supabase-community/supabase-kubernetes) operator, and its gateway URL and anon key.
 - `node`/`npm`, `jq`, `make`, `docker` on the build machine, with push access to the registry the cluster pulls images from.
 - `kubectl` access to the cluster.
-- An OpenAI API key, stored on the cluster as secret `openai`, key `api-key`, in namespace `default`:
+- An OpenAI API key, stored on the cluster in the secret the platform's Project already exposes to edge functions, `supabase-functions-env`, under key `OPENAI_API_KEY`, in namespace `default`:
 
   ```
-  kubectl create secret generic openai -n default --from-literal=api-key='<key>'
+  kubectl patch secret supabase-functions-env -n default --type merge -p '{"stringData":{"OPENAI_API_KEY":"<key>"}}'
   ```
 
 ## Build
@@ -130,7 +130,7 @@ The environment variables are set on the Deployment. The container's complete en
 | `SEMGREP_URL` | generator loop | literal — in-cluster gateway URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | generator loop | secret `supabase-jwt`, key `service-key` |
 | `SUPABASE_ANON_KEY` | page (via substitution) | secret `supabase-jwt`, key `anon-key` |
-| `OPENAI_API_KEY` | generator loop | secret `openai`, key `api-key` |
+| `OPENAI_API_KEY` | generator loop | secret `supabase-functions-env`, key `OPENAI_API_KEY` |
 | `SEMGREP_EXTERNAL_URL` | page (via substitution) | set on the cluster with kubectl at deployment time |
 
 The public port and the external URL appear nowhere in this repository's artifacts. The Deployment ships in `crs/semgrep.yaml` at 0 replicas; it is configured (URL, port) and scaled up on the cluster at deployment time, per the Deploy section.
