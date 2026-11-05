@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { API_BASE, HEADERS, supabase } from './client'
+import { supabase } from './client'
 
 const POINTS = 30
+const DEFAULT_USER = '00000000-0000-0000-0000-000000000000'
 
 type Bar = { ts: string; close: number }
 type Row = {
@@ -42,12 +43,10 @@ export default function Watchlist({
   selected,
   onSelect,
   onCount,
-  stories,
 }: {
   selected: Set<string>
   onSelect: (symbols: Set<string>) => void
   onCount: (n: number) => void
-  stories: number
 }) {
   const [rows, setRows] = useState<Row[]>([])
   const [series, setSeries] = useState<Record<string, Series>>({})
@@ -56,12 +55,21 @@ export default function Watchlist({
   seriesRef.current = series
 
   async function load() {
-    const res = await fetch(
-      `${API_BASE}/rest/v1/ticker?select=symbol,name,info,logo,ticker_price(ts,close)&active=eq.true&order=symbol&ticker_price.order=ts.desc&ticker_price.limit=${POINTS}`,
-      { headers: HEADERS },
-    )
-    if (!res.ok) return
-    const data: Row[] = await res.json()
+    const { data: list, error: listError } = await supabase
+      .from('ticker_watchlist')
+      .select('symbol')
+      .eq('user_id', DEFAULT_USER)
+    if (listError) return
+    const symbols = (list as { symbol: string }[]).map((r) => r.symbol)
+    const { data: rows, error } = await supabase
+      .from('ticker')
+      .select('symbol,name,info,logo,ticker_price(ts,close)')
+      .in('symbol', symbols)
+      .order('symbol')
+      .order('ts', { referencedTable: 'ticker_price', ascending: false })
+      .limit(POINTS, { referencedTable: 'ticker_price' })
+    if (error) return
+    const data = rows as Row[]
     const next: Record<string, Series> = {}
     for (const row of data) {
       const hist = row.ticker_price.map((b) => b.close).reverse()
@@ -75,6 +83,7 @@ export default function Watchlist({
     setRows(data)
     setSeries(next)
     onCount(data.length)
+    if (data.length && selected.size === 0) onSelect(new Set([data[0].symbol]))
   }
 
   useEffect(() => {
@@ -96,10 +105,12 @@ export default function Watchlist({
         }))
         setFlash((prev) => ({ ...prev, [bar.symbol]: { cls, n: (prev[bar.symbol]?.n ?? 0) + 1 } }))
         if (cur.logo === null) {
-          fetch(`${API_BASE}/rest/v1/ticker?select=logo&symbol=eq.${encodeURIComponent(bar.symbol)}`, { headers: HEADERS })
-            .then((res) => (res.ok ? res.json() : []))
-            .then((rows: { logo: string | null }[]) => {
-              const logo = rows[0]?.logo ?? null
+          supabase
+            .from('ticker')
+            .select('logo')
+            .eq('symbol', bar.symbol)
+            .then(({ data: rows }) => {
+              const logo = rows?.[0]?.logo ?? null
               if (logo !== null) setSeries((prev) => ({ ...prev, [bar.symbol]: { ...prev[bar.symbol], logo } }))
             })
         }
@@ -117,15 +128,6 @@ export default function Watchlist({
   return (
     <aside id="rail">
       <div className="railhead">Watchlist</div>
-      <div className={`row allrow ${selected.size === 0 ? 'sel' : ''}`} onClick={() => onSelect(new Set())}>
-        <div className="rowl">
-          <div className="sym">All tickers</div>
-          <div className="co">{rows.length} tracked</div>
-        </div>
-        <div className="rowr">
-          <div className="count">{stories} stories</div>
-        </div>
-      </div>
       {rows.map((row) => {
         const s = series[row.symbol]
         const f = flash[row.symbol]

@@ -82,7 +82,7 @@ export default function App() {
         </div>
       )}
       <main>
-        <Watchlist selected={selected} onSelect={select} onCount={setTickers} stories={stories} />
+        <Watchlist selected={selected} onSelect={select} onCount={setTickers} />
         <section id="center" className={selected.size > 0 ? 'split' : ''}>
           {selected.size > 0 && <Chart symbol={[...selected][0]} />}
           {article && <Article story={article} />}

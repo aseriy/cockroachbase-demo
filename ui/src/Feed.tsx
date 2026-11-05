@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { API_BASE, HEADERS } from './client'
+import { supabase } from './client'
 import type { Story } from './App'
 
 const STORIES = 10
@@ -41,21 +41,17 @@ export default function Feed({
   useEffect(() => {
     let stale = false
     async function load() {
-      let res: Response
-      if (query) {
-        res = await fetch(`${API_BASE}/functions/v1/semgrep-api`, {
-          method: 'POST',
-          headers: { ...HEADERS, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ op: 'search', text: query, [bound === 'topk' ? 'max_docs' : 'max_distance']: boundValue }),
-        })
-      } else {
-        const url = symbols.length
-          ? `${API_BASE}/rest/v1/yahoo_news?select=id,publication,ticker_news!inner(symbol)&ticker_news.symbol=${encodeURIComponent(`in.(${symbols.map((s) => `"${s}"`).join(',')})`)}&limit=${STORIES}`
-          : `${API_BASE}/rest/v1/yahoo_news?select=id,publication&limit=${STORIES}`
-        res = await fetch(url, { headers: HEADERS })
-      }
-      if (!res.ok || stale) return
-      const rows: Story[] = await res.json()
+      const { data, error } = query
+        ? await supabase.functions.invoke('semgrep-api', {
+            body: { op: 'search', text: query, [bound === 'topk' ? 'max_docs' : 'max_distance']: boundValue },
+          })
+        : await supabase
+            .from('yahoo_news')
+            .select('id,publication,ticker_news!inner(symbol)')
+            .in('ticker_news.symbol', symbols)
+            .limit(STORIES)
+      if (error || stale) return
+      const rows = data as Story[]
       setStories(rows)
       onCount(rows.length)
       onOpen(rows[0] ?? null)
@@ -91,7 +87,7 @@ export default function Feed({
       ) : stories.length === 0 ? (
         <div className="empty">
           <h3>Nothing here</h3>
-          <div>No stories for <b>{scope || 'all tickers'}</b>.</div>
+          <div>No stories for <b>{scope}</b>.</div>
         </div>
       ) : (
         <div className="feed">

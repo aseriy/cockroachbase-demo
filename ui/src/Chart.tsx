@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { API_BASE, HEADERS } from './client'
+import { supabase } from './client'
 
 type Bar = { ts: string; close: number }
 
@@ -13,14 +13,10 @@ export default function Chart({ symbol }: { symbol: string }) {
   useEffect(() => {
     let stale = false
     async function load() {
-      const res = await fetch(`${API_BASE}/rest/v1/rpc/ticker_price_5m`, {
-        method: 'POST',
-        headers: { ...HEADERS, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sym: symbol }),
-      })
+      const { data, error } = await supabase.rpc('ticker_price_5m', { sym: symbol })
       if (stale) return
-      if (res.ok) setBars(await res.json())
-      else setError(`chart ${res.status}`)
+      if (error) setError(`chart ${error.message}`)
+      else setBars(data as Bar[])
     }
     setBars([])
     setError('')

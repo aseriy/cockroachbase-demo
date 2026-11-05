@@ -140,8 +140,6 @@
   @keyframes fu { 0% { background: var(--mica-app-success-bg, #EFFAF4); } 100% { background: transparent; } }
   @keyframes fd { 0% { background: var(--mica-app-error-bg, #FFF1F1); } 100% { background: transparent; } }
   .spark { display: block; }
-  .allrow { border-bottom: 1px solid var(--mica-app-border, #DEDBD1); border-radius: 8px; margin-bottom: 6px; padding-bottom: 10px; }
-  .count { font-size: 11px; color: var(--mica-app-text-muted, #625F5A); font-variant-numeric: tabular-nums; }
 
   /* ---------- center ---------- */
   section { flex: 1 1 auto; overflow-y: auto; min-width: 0; }

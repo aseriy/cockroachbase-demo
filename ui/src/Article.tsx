@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { API_BASE, HEADERS } from './client'
+import { FunctionsHttpError } from '@supabase/supabase-js'
+import { supabase } from './client'
 import type { Story } from './App'
 
 // The YAML front matter written ahead of the Markdown in <id>.md, the keys the page reads.
@@ -15,14 +16,10 @@ export default function Article({ story }: { story: Story }) {
   useEffect(() => {
     let stale = false
     async function load() {
-      const res = await fetch(`${API_BASE}/functions/v1/semgrep-api`, {
-        method: 'POST',
-        headers: { ...HEADERS, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ op: 'article', id: story.id }),
-      })
+      const { data, error } = await supabase.functions.invoke('semgrep-api', { body: { op: 'article', id: story.id } })
       if (stale) return
-      if (res.ok) setDoc(await res.json())
-      else setError(`article ${res.status}`)
+      if (error) setError(`article ${error instanceof FunctionsHttpError ? error.context.status : error.message}`)
+      else setDoc(data as Doc)
     }
     load()
     return () => {
