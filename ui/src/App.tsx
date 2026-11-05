@@ -5,6 +5,7 @@ import Auth from './Auth'
 import Watchlist from './Watchlist'
 import Feed from './Feed'
 import Article from './Article'
+import Chart from './Chart'
 
 // The raw Yahoo item stored in yahoo_news.publication, the keys the page reads.
 export type Publication = {
@@ -63,58 +64,6 @@ export default function App() {
     <div id="app">
       <header>
         <div className="brand">Watchlist</div>
-        <div className="searchwrap">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-            <circle cx="11" cy="11" r="7" />
-            <path d="M20 20l-3.5-3.5" />
-          </svg>
-          <input
-            id="q"
-            type="text"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="Ask the watchlist — e.g. “who is having supply problems”"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') search(query)
-              if (e.key === 'Escape') clearSearch()
-            }}
-          />
-          {query && (
-            <button id="clearq" title="Clear" style={{ display: 'block' }} onClick={clearSearch}>
-              &times;
-            </button>
-          )}
-        </div>
-        <div className="searchopts">
-          <label>top-k</label>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            value={topK}
-            disabled={bound !== 'topk'}
-            onChange={(e) => setTopK(Number(e.target.value))}
-          />
-          <button
-            className="switch"
-            role="switch"
-            aria-checked={bound === 'distance'}
-            title={bound === 'topk' ? 'Bound by top-k' : 'Bound by distance'}
-            onClick={() => setBound(bound === 'topk' ? 'distance' : 'topk')}
-          />
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.005}
-            value={maxDistance}
-            disabled={bound !== 'distance'}
-            onChange={(e) => setMaxDistance(Number(e.target.value))}
-          />
-          <label>distance</label>
-        </div>
         <div className="hint">
           <b>{tickers}</b> tickers · <b>{stories}</b> stories
           {session ? (
@@ -134,21 +83,75 @@ export default function App() {
       )}
       <main>
         <Watchlist selected={selected} onSelect={select} onCount={setTickers} stories={stories} />
-        <section id="center">
-          {article ? (
-            <Article story={article} searching={submitted !== ''} onBack={() => setArticle(null)} />
-          ) : (
-            <Feed
-              selected={selected}
-              query={submitted}
-              bound={bound}
-              boundValue={bound === 'topk' ? topK : maxDistance}
-              onOpen={setArticle}
-              onTag={(s) => select(new Set([s]))}
-              onSuggest={search}
-              onCount={setStories}
-            />
-          )}
+        <section id="center" className={selected.size > 0 ? 'split' : ''}>
+          {selected.size > 0 && <Chart symbol={[...selected][0]} />}
+          {article && <Article story={article} />}
+        </section>
+        <section id="stories">
+          <div className="searchbar">
+            <div className="searchwrap">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M20 20l-3.5-3.5" />
+              </svg>
+              <input
+                id="q"
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="Ask the watchlist — e.g. “who is having supply problems”"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') search(query)
+                  if (e.key === 'Escape') clearSearch()
+                }}
+              />
+              {query && (
+                <button id="clearq" title="Clear" style={{ display: 'block' }} onClick={clearSearch}>
+                  &times;
+                </button>
+              )}
+            </div>
+            <div className="searchopts">
+              <label>top-k</label>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={topK}
+                disabled={bound !== 'topk'}
+                onChange={(e) => setTopK(Number(e.target.value))}
+              />
+              <button
+                className="switch"
+                role="switch"
+                aria-checked={bound === 'distance'}
+                title={bound === 'topk' ? 'Bound by top-k' : 'Bound by distance'}
+                onClick={() => setBound(bound === 'topk' ? 'distance' : 'topk')}
+              />
+              <input
+                type="number"
+                min={0}
+                max={1}
+                step={0.005}
+                value={maxDistance}
+                disabled={bound !== 'distance'}
+                onChange={(e) => setMaxDistance(Number(e.target.value))}
+              />
+              <label>distance</label>
+            </div>
+          </div>
+          <Feed
+            selected={selected}
+            query={submitted}
+            bound={bound}
+            boundValue={bound === 'topk' ? topK : maxDistance}
+            onOpen={setArticle}
+            onTag={(s) => select(new Set([s]))}
+            onSuggest={search}
+            onCount={setStories}
+          />
         </section>
       </main>
       <footer>

@@ -133,3 +133,42 @@ LANGUAGE sql STABLE AS $$
   LIMIT max_docs
 $$;
 GRANT EXECUTE ON FUNCTION yahoo_news_search TO anon, authenticated, service_role;
+
+
+DROP FUNCTION IF EXISTS ticker_price_5m;
+CREATE OR REPLACE FUNCTION ticker_price_5m(sym VARCHAR(21))                                                                        
+RETURNS TABLE(ts timestamptz, close float8)
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+  zone TEXT;
+  first_day DATE;
+BEGIN
+  SELECT e.tz INTO zone
+  FROM ticker t JOIN exchange e ON e.code = t.exchange
+  WHERE t.symbol = sym;
+
+  SELECT min(d) INTO first_day
+  FROM (
+    SELECT DISTINCT (p.ts AT TIME ZONE zone)::date AS d
+    FROM ticker_price p
+    WHERE p.symbol = sym
+    ORDER BY d DESC
+    LIMIT 5
+  ) AS days;
+
+  RETURN QUERY
+    SELECT bucket AS ts, last_close AS close
+    FROM (
+      SELECT DISTINCT ON (bucket) bucket, p.close AS last_close
+      FROM (
+        SELECT to_timestamp(floor(extract(epoch FROM q.ts) / 300) * 300) AS bucket, q.ts, q.close
+        FROM ticker_price q
+        WHERE q.symbol = sym
+          AND (q.ts AT TIME ZONE zone)::date >= first_day
+      ) AS p
+      ORDER BY bucket, p.ts DESC
+    ) AS last_in_bucket
+    ORDER BY bucket;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ticker_price_5m TO anon, authenticated, service_role;

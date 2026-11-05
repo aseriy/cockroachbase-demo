@@ -29,7 +29,7 @@ export default function Feed({
   query: string
   bound: 'topk' | 'distance'
   boundValue: number
-  onOpen: (story: Story) => void
+  onOpen: (story: Story | null) => void
   onTag: (symbol: string) => void
   onSuggest: (text: string) => void
   onCount: (n: number) => void
@@ -58,6 +58,7 @@ export default function Feed({
       const rows: Story[] = await res.json()
       setStories(rows)
       onCount(rows.length)
+      onOpen(rows[0] ?? null)
     }
     load()
     return () => {
