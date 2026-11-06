@@ -210,3 +210,75 @@ INSERT INTO ticker_watchlist (user_id, symbol) VALUES
     ('00000000-0000-0000-0000-000000000000', 'RIOT'),
     ('00000000-0000-0000-0000-000000000000', 'SNAP'),
     ('00000000-0000-0000-0000-000000000000', 'BBD');
+
+
+DROP FUNCTION IF EXISTS ticker_price_latest_mvcc_timestamp;
+CREATE OR REPLACE FUNCTION ticker_price_latest_mvcc_timestamp(sym VARCHAR(21))                                                             
+RETURNS TEXT
+LANGUAGE sql STABLE AS $$
+  SELECT max(crdb_internal_mvcc_timestamp)::TEXT
+  FROM ticker_price
+  WHERE symbol = sym
+$$;
+GRANT EXECUTE ON FUNCTION ticker_price_latest_mvcc_timestamp TO anon, authenticated, service_role;
+
+
+DROP FUNCTION IF EXISTS ticker_price_session;
+CREATE OR REPLACE FUNCTION ticker_price_session(sym VARCHAR(21), cutoff TEXT)
+RETURNS TABLE(ts timestamptz, close float8, prev_close float8, session_end timestamptz, next_open timestamptz)                                
+LANGUAGE plpgsql STABLE AS $$
+DECLARE
+  zone TEXT;
+  open_t TIME;
+  close_t TIME;
+  session_day DATE;
+  s_start TIMESTAMPTZ;
+  s_end TIMESTAMPTZ;
+  n_open TIMESTAMPTZ;
+  prev FLOAT8;
+BEGIN
+  SELECT e.tz, e.open, e.close INTO zone, open_t, close_t
+  FROM ticker t JOIN exchange e ON e.code = t.exchange
+  WHERE t.symbol = sym;
+
+  SELECT (p.ts AT TIME ZONE zone)::date INTO session_day
+  FROM ticker_price p
+  WHERE p.symbol = sym
+    AND p.crdb_internal_mvcc_timestamp <= cutoff::DECIMAL
+    AND (p.ts AT TIME ZONE zone)::time >= open_t
+    AND (p.ts AT TIME ZONE zone)::time < close_t
+  ORDER BY p.ts DESC LIMIT 1;
+
+  SELECT (session_day::timestamp + (open_t - '00:00:00'::time)) AT TIME ZONE zone,
+          (session_day::timestamp + (close_t - '00:00:00'::time)) AT TIME ZONE zone,
+          ((session_day + CASE extract(isodow FROM session_day)::int WHEN 5 THEN 3 WHEN 6 THEN 2 ELSE 1 END)::timestamp
+            + (open_t - '00:00:00'::time)) AT TIME ZONE zone
+  INTO s_start, s_end, n_open;
+
+  SELECT p.close INTO prev
+  FROM ticker_price p
+  WHERE p.symbol = sym
+    AND p.crdb_internal_mvcc_timestamp <= cutoff::DECIMAL
+    AND p.ts < s_start
+    AND (p.ts AT TIME ZONE zone)::time >= open_t
+    AND (p.ts AT TIME ZONE zone)::time < close_t
+  ORDER BY p.ts DESC LIMIT 1;
+
+  RETURN QUERY
+  SELECT bucket AS ts, last_close AS close, prev AS prev_close, s_end AS session_end, n_open AS next_open FROM (
+    SELECT DISTINCT ON (bucket) bucket, p.close AS last_close FROM (
+      SELECT to_timestamp(floor(extract(epoch FROM q.ts) / 300) * 300) AS bucket, q.ts, q.close
+      FROM ticker_price q
+      WHERE q.symbol = sym
+        AND q.crdb_internal_mvcc_timestamp <= cutoff::DECIMAL
+        AND q.ts >= s_start
+        AND q.ts < s_end
+    ) AS p ORDER BY bucket, p.ts DESC
+  ) AS last_in_bucket ORDER BY bucket;
+END
+$$;
+GRANT EXECUTE ON FUNCTION ticker_price_session TO anon, authenticated, service_role;
+
+
+
+

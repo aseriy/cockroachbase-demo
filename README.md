@@ -210,6 +210,8 @@ Under the hood the transport is the Phoenix channel protocol — `phx_join` to s
 
 Your only job is in the status callback: `CHANNEL_ERROR` or `CLOSED` means you are currently missing messages, and when `SUBSCRIBED` fires again you re-fetch from the REST API (for this app, the feed's `/rest/v1/messages` query), because realtime never replays what you missed. REST stays the source of truth; realtime only tells you when to look.
 
+One limitation of the realtime service on this stack, as of November 2026: a `filter` on a `postgres_changes` subscription is accepted but not applied. Every subscriber to `ticker_price` receives every row of the table, whatever symbol it asked for. The watchlist chip (`ui/src/Chip.tsx`) therefore checks `payload.new.symbol` against its own symbol before using an event. When the service starts honoring filters, add `filter: 'symbol=eq.<symbol>'` back to the chip's subscription and drop that check.
+
 ### Company logos
 
 Each watchlist row shows the company's logo. The logo comes from the Elbstream Logo API. The API needs no key. One URL serves one symbol, and the default response is an SVG:

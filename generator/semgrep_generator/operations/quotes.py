@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 HISTORY_SECONDS = 691200 - 5
 UPSERT_ROWS = 180
 PASS_INTERVAL_SECONDS = 300
+BACKFILL_ROWS = 1000
 
 
 def _exchanges(client: Client) -> dict:
@@ -22,7 +23,14 @@ def _exchanges(client: Client) -> dict:
 
 
 def _active_tickers(client: Client) -> list[dict]:
-    return client.table("ticker").select("symbol, exchange").eq("active", True).execute().data
+    tickers = []
+    last = ""
+    while True:
+        rows = client.table("ticker").select("symbol, exchange").eq("active", True).gt("symbol", last).order("symbol").limit(BACKFILL_ROWS).execute().data
+        if not rows:
+            return tickers
+        tickers.extend(rows)
+        last = rows[-1]["symbol"]
 
 
 def _is_open(exchange: dict) -> bool:
