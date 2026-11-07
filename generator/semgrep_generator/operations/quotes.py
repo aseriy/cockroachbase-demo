@@ -1,14 +1,15 @@
+import asyncio
 import logging
 from datetime import datetime, time, timedelta, timezone
-from time import monotonic, sleep
+from time import monotonic
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
-from supabase import Client
+from supabase import AsyncClient
 from yfinance.exceptions import YFPricesMissingError
 
-from .common import get_client
+from .common import get_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +19,16 @@ PASS_INTERVAL_SECONDS = 300
 BACKFILL_ROWS = 1000
 
 
-def _exchanges(client: Client) -> dict:
-    rows = client.table("exchange").select("code, open, close, tz").execute().data
+async def _exchanges(client: AsyncClient) -> dict:
+    rows = (await client.table("exchange").select("code, open, close, tz").execute()).data
     return {row["code"]: row for row in rows}
 
 
-def _active_tickers(client: Client) -> list[dict]:
+async def _active_tickers(client: AsyncClient) -> list[dict]:
     tickers = []
     last = ""
     while True:
-        rows = client.table("ticker").select("symbol, exchange").eq("active", True).gt("symbol", last).order("symbol").limit(BACKFILL_ROWS).execute().data
+        rows = (await client.table("ticker").select("symbol, exchange").eq("active", True).gt("symbol", last).order("symbol").limit(BACKFILL_ROWS).execute()).data
         if not rows:
             return tickers
         tickers.extend(rows)
@@ -39,8 +40,8 @@ def _is_open(exchange: dict) -> bool:
     return time.fromisoformat(exchange["open"]) <= now <= time.fromisoformat(exchange["close"])
 
 
-def _latest_ts(client: Client, symbol: str) -> Optional[datetime]:
-    rows = client.table("ticker_price").select("ts").eq("symbol", symbol).order("ts", desc=True).limit(1).execute().data
+async def _latest_ts(client: AsyncClient, symbol: str) -> Optional[datetime]:
+    rows = (await client.table("ticker_price").select("ts").eq("symbol", symbol).order("ts", desc=True).limit(1).execute()).data
     return datetime.fromisoformat(rows[0]["ts"]) if rows else None
 
 
@@ -68,20 +69,20 @@ def _rows(symbol: str, bars) -> list[dict]:
     ]
 
 
-def _upsert_bars(client: Client, rows: list[dict]) -> None:
+async def _upsert_bars(client: AsyncClient, rows: list[dict]) -> None:
     for i in range(0, len(rows), UPSERT_ROWS):
-        client.table("ticker_price").upsert(rows[i:i + UPSERT_ROWS], on_conflict="symbol,ts").execute()
+        await client.table("ticker_price").upsert(rows[i:i + UPSERT_ROWS], on_conflict="symbol,ts").execute()
 
 
-def _run_pass(client: Client, first: bool) -> None:
+async def _run_pass(client: AsyncClient, first: bool) -> None:
     try:
-        exchanges = _exchanges(client)
+        exchanges = await _exchanges(client)
     except Exception as error:
         logger.error(f"exchanges: {error}")
         exchanges = {}
 
     try:
-        tickers = _active_tickers(client)
+        tickers = await _active_tickers(client)
     except Exception as error:
         logger.error(f"active tickers: {error}")
         tickers = []
@@ -101,11 +102,11 @@ def _run_pass(client: Client, first: bool) -> None:
     for symbol in due:
         try:
             end = datetime.now(timezone.utc) - timedelta(minutes=1)
-            latest = _latest_ts(client, symbol)
+            latest = await _latest_ts(client, symbol)
             start = _window_start(latest, end)
-            bars = _fetch_bars(symbol, start, end)
+            bars = await asyncio.to_thread(_fetch_bars, symbol, start, end)
             rows = _rows(symbol, bars)
-            _upsert_bars(client, rows)
+            await _upsert_bars(client, rows)
             if rows:
                 logger.info(f"{symbol}: {len(rows)} bars")
         except YFPricesMissingError:
@@ -114,11 +115,15 @@ def _run_pass(client: Client, first: bool) -> None:
             logger.error(f"{symbol}: {error}")
 
 
-def run_quotes(args: dict) -> None:
-    client = get_client()
+async def _main() -> None:
+    client = await get_async_client()
     first = True
     while True:
         started = monotonic()
-        _run_pass(client, first)
+        await _run_pass(client, first)
         first = False
-        sleep(max(0.0, PASS_INTERVAL_SECONDS - (monotonic() - started)))
+        await asyncio.sleep(max(0.0, PASS_INTERVAL_SECONDS - (monotonic() - started)))
+
+
+def run_quotes(args: dict) -> None:
+    asyncio.run(_main())
