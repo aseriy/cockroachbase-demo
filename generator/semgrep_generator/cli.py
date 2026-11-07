@@ -1,6 +1,8 @@
 import logging
+import warnings
 
 import click
+from pandas.errors import Pandas4Warning
 
 from .operations import run_extract, run_index, run_messages, run_news, run_quotes, run_ticker, run_ticker_logo, run_ticker_news
 
@@ -19,6 +21,7 @@ def messages() -> None:
 @cli.command(short_help="Feed price bars to the quotes table")
 def quotes() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    warnings.filterwarnings("ignore", category=Pandas4Warning)
     run_quotes({})
 
 

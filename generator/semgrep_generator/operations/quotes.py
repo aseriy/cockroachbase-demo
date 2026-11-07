@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import yfinance as yf
 from supabase import Client
+from yfinance.exceptions import YFPricesMissingError
 
 from .common import get_client
 
@@ -105,7 +106,10 @@ def _run_pass(client: Client, first: bool) -> None:
             bars = _fetch_bars(symbol, start, end)
             rows = _rows(symbol, bars)
             _upsert_bars(client, rows)
-            logger.info(f"{symbol}: {len(rows)} bars")
+            if rows:
+                logger.info(f"{symbol}: {len(rows)} bars")
+        except YFPricesMissingError:
+            pass
         except Exception as error:
             logger.error(f"{symbol}: {error}")
 
