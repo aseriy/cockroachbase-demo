@@ -6,6 +6,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 import yfinance as yf
+from realtime import RealtimeSubscribeStates
 from supabase import AsyncClient
 from yfinance.exceptions import YFPricesMissingError
 
@@ -13,6 +14,7 @@ from .common import get_async_client
 
 logger = logging.getLogger(__name__)
 
+CHANNEL = "ticker"
 HISTORY_SECONDS = 691200 - 5
 UPSERT_ROWS = 180
 PASS_INTERVAL_SECONDS = 300
@@ -74,7 +76,24 @@ async def _upsert_bars(client: AsyncClient, rows: list[dict]) -> None:
         await client.table("ticker_price").upsert(rows[i:i + UPSERT_ROWS], on_conflict="symbol,ts").execute()
 
 
-async def _run_pass(client: AsyncClient, first: bool) -> None:
+async def _fill(client: AsyncClient, lock: asyncio.Lock, symbol: str) -> None:
+    async with lock:
+        try:
+            end = datetime.now(timezone.utc) - timedelta(minutes=1)
+            latest = await _latest_ts(client, symbol)
+            start = _window_start(latest, end)
+            bars = await asyncio.to_thread(_fetch_bars, symbol, start, end)
+            rows = _rows(symbol, bars)
+            await _upsert_bars(client, rows)
+            if rows:
+                logger.info(f"{symbol}: {len(rows)} bars")
+        except YFPricesMissingError:
+            pass
+        except Exception as error:
+            logger.error(f"{symbol}: {error}")
+
+
+async def _run_pass(client: AsyncClient, lock: asyncio.Lock, first: bool) -> None:
     try:
         exchanges = await _exchanges(client)
     except Exception as error:
@@ -100,27 +119,56 @@ async def _run_pass(client: AsyncClient, first: bool) -> None:
     logger.info(f"tickers due: {len(due)}")
 
     for symbol in due:
-        try:
-            end = datetime.now(timezone.utc) - timedelta(minutes=1)
-            latest = await _latest_ts(client, symbol)
-            start = _window_start(latest, end)
-            bars = await asyncio.to_thread(_fetch_bars, symbol, start, end)
-            rows = _rows(symbol, bars)
-            await _upsert_bars(client, rows)
-            if rows:
-                logger.info(f"{symbol}: {len(rows)} bars")
-        except YFPricesMissingError:
-            pass
-        except Exception as error:
-            logger.error(f"{symbol}: {error}")
+        await _fill(client, lock, symbol)
+
+
+async def _subscribe(client: AsyncClient, lock: asyncio.Lock) -> None:
+    logger.debug("debug: subscribe start")
+
+    def on_insert(payload: dict) -> None:
+        logger.debug(f"debug: payload {payload}")
+        record = payload["data"]["record"]
+        symbol = record["symbol"]
+        logger.info(f"{symbol}: inserted")
+        if record["active"]:
+            asyncio.create_task(_fill(client, lock, symbol))
+
+    def on_update(payload: dict) -> None:
+        logger.debug(f"debug: payload {payload}")
+        record = payload["data"]["record"]
+        symbol = record["symbol"]
+        logger.info(f"{symbol}: updated")
+        if record["active"]:
+            asyncio.create_task(_fill(client, lock, symbol))
+
+    def on_status(status: RealtimeSubscribeStates, error) -> None:
+        logger.debug(f"debug: status {status} {error}")
+        if status == RealtimeSubscribeStates.SUBSCRIBED:
+            logger.info(f"{CHANNEL}: subscribed")
+        else:
+            logger.error(f"{CHANNEL}: {status} {error}")
+
+    try:
+        channel = client.channel(CHANNEL)
+        channel.on_postgres_changes("INSERT", schema="public", table="ticker", callback=on_insert)
+        channel.on_postgres_changes("UPDATE", schema="public", table="ticker", callback=on_update)
+        await channel.subscribe(on_status)
+        logger.debug("debug: subscribe returned")
+    except Exception as error:
+        logger.error(f"{CHANNEL}: {error}")
 
 
 async def _main() -> None:
     client = await get_async_client()
+    lock = asyncio.Lock()
+    subscription = asyncio.create_task(_subscribe(client, lock))
+    logger.debug("debug: subscribe task created")
     first = True
     while True:
         started = monotonic()
-        await _run_pass(client, first)
+        logger.debug("debug: pass start")
+        await _run_pass(client, lock, first)
+        logger.debug("debug: pass end")
         first = False
         await asyncio.sleep(max(0.0, PASS_INTERVAL_SECONDS - (monotonic() - started)))
 
